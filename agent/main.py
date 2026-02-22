@@ -424,3 +424,20 @@ async def trigger_scan():
     from stock_scanner import run_scan
     await run_scan()
     return {"ok": True, "message": "Skanning startad."}
+
+
+@app.post("/api/run")
+async def trigger_trading_loop():
+    """Manually trigger a full trading loop iteration for all watchlist tickers."""
+    from scheduler import trading_loop
+    await trading_loop()
+    return {"ok": True, "message": "Trading loop kord for alla bevakade aktier."}
+
+
+@app.post("/api/run/{ticker}")
+async def trigger_single_ticker(ticker: str):
+    """Manually run process_ticker for a single ticker (full DB writes + signal generation)."""
+    from scheduler import process_ticker
+    ticker = ticker.upper()
+    await process_ticker(ticker)
+    return {"ok": True, "message": f"Bearbetning klar for {ticker}."}
