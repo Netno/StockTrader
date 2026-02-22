@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_AGENT_URL ?? "http://localhost:8000";
 
 const statusBadge: Record<string, string> = {
   confirmed: "bg-green-500/20 text-green-400",
