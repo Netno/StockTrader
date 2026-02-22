@@ -8,7 +8,7 @@ from data.yahoo_client import get_price_history, get_current_price
 from data.news_fetcher import fetch_news
 from data.insider_fetcher import fetch_insider_trades
 from analysis.indicators import calculate_indicators
-from analysis.sentiment import analyze_sentiment
+from analysis.sentiment import analyze_sentiment, generate_signal_description
 from analysis.decision_engine import (
     score_buy_signal,
     score_sell_signal,
@@ -151,6 +151,9 @@ async def process_ticker(ticker: str):
             # Alert user to sell on Avanza — no auto-close
             label = "Stop-loss" if hit_sl else "Take-profit"
             reasons = [f"{label} natt ({price:.2f} kr) — salj pa Avanza"]
+            news_headline = news_list[0]["headline"] if news_list else ""
+            description = await generate_signal_description(ticker, "SELL", price, reasons, news_headline)
+            indicators["signal_description"] = description
 
             await db.save_signal(
                 ticker, "SELL", price, qty, 100.0, 100, reasons, indicators, 0.0, 0.0,
@@ -173,6 +176,9 @@ async def process_ticker(ticker: str):
             if sell_score >= SIGNAL_THRESHOLD:
                 confidence = min(99.0, float(sell_score))
                 sell_reasons.append("Salj pa Avanza och stang positionen i appen")
+                news_headline = news_list[0]["headline"] if news_list else ""
+                description = await generate_signal_description(ticker, "SELL", price, sell_reasons, news_headline)
+                indicators["signal_description"] = description
 
                 await db.save_signal(
                     ticker, "SELL", price, qty, confidence, sell_score,
@@ -242,6 +248,9 @@ async def process_ticker(ticker: str):
             return
 
         stop_loss, take_profit = calculate_stop_take(ticker, price, indicators)
+        news_headline = news_list[0]["headline"] if news_list else ""
+        description = await generate_signal_description(ticker, "BUY", price, buy_reasons, news_headline)
+        indicators["signal_description"] = description
 
         await db.save_signal(
             ticker, "BUY", price, quantity, confidence, buy_score,

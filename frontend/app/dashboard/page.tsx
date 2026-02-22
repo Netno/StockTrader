@@ -22,10 +22,11 @@ const notifColor: Record<string, string> = {
 };
 
 export default async function DashboardPage() {
-  const [signals, positions, trades, portfolioNotifs] = await Promise.allSettled([
+  const [signals, positions, trades, summary, portfolioNotifs] = await Promise.allSettled([
     api.signals(50),
     api.positions(),
     api.trades("closed"),
+    api.summary(),
     supabase
       .from("stock_notifications")
       .select("*")
@@ -38,6 +39,7 @@ export default async function DashboardPage() {
   const signalData    = signals.status    === "fulfilled" ? signals.value    : [];
   const positionsData = positions.status  === "fulfilled" ? positions.value  : {};
   const tradesData    = trades.status     === "fulfilled" ? trades.value     : [];
+  const summaryData   = summary.status    === "fulfilled" ? summary.value    : null;
   const notifData     = portfolioNotifs.status === "fulfilled" ? portfolioNotifs.value : [];
 
   const pendingSignals = signalData.filter(
@@ -59,8 +61,12 @@ export default async function DashboardPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Investerat" value={`${invested.toFixed(0)} kr`} sub="Paper trading" />
-        <StatCard label="Oppna positioner" value={String(openCount)} sub="Max 3" />
+        <StatCard
+          label="Tillganglig kassa"
+          value={`${(summaryData?.available_cash ?? 0).toFixed(0)} kr`}
+          sub={`av ${(summaryData?.total_deposited ?? 0).toFixed(0)} kr insatt`}
+        />
+        <StatCard label="Investerat" value={`${invested.toFixed(0)} kr`} sub={`${openCount} position${openCount !== 1 ? "er" : ""}`} />
         <StatCard label="Avslutade affarer" value={String(totalTrades)} />
         <StatCard
           label="Totalt P&L"
@@ -100,6 +106,11 @@ export default async function DashboardPage() {
                   <p className="text-xs text-gray-400">
                     {s.quantity} aktier &middot; ~{(s.price * s.quantity)?.toFixed(0)} kr &middot; Score {s.score}p
                   </p>
+                  {s.indicators?.signal_description && (
+                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                      {s.indicators.signal_description}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col items-end gap-1 text-xs">
                   <span className="text-red-400">SL {s.stop_loss_price?.toFixed(2)}</span>

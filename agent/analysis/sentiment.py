@@ -37,3 +37,35 @@ async def analyze_sentiment(ticker: str, headline: str) -> dict:
         print(f"Gemini error for {ticker}: {e}")
 
     return {"sentiment": "NEUTRAL", "score": 0.0, "reason": "Analys misslyckades"}
+
+
+async def generate_signal_description(
+    ticker: str,
+    signal_type: str,
+    price: float,
+    reasons: list[str],
+    news_headline: str = "",
+) -> str:
+    """Generate a plain-Swedish explanation of why this signal was triggered."""
+    action = "KÖP" if signal_type == "BUY" else "SÄLJ"
+    reasons_text = "\n".join(f"- {r}" for r in reasons)
+    news_part = f"\nSenaste nyhet: {news_headline}" if news_headline else ""
+
+    prompt = (
+        f"Du är en aktierådgivare. Förklara på enkel svenska varför agenten ger en {action}-rekommendation "
+        f"för {ticker} vid kurs {price:.2f} kr.\n\n"
+        f"Tekniska skäl:\n{reasons_text}{news_part}\n\n"
+        f"Skriv 2-3 meningar som förklarar logiken bakom rekommendationen för en privatperson. "
+        f"Var konkret och nämn de viktigaste skälen. Inga rubriker, bara löptext."
+    )
+
+    try:
+        response = _client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.3),
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Gemini description error for {ticker}: {e}")
+        return ", ".join(reasons[:3])

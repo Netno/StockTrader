@@ -76,6 +76,13 @@ export default async function SignalsPage() {
                 </div>
               </div>
 
+              {/* Description */}
+              {s.indicators?.signal_description && (
+                <p className="text-sm text-gray-300 leading-relaxed">
+                  {s.indicators.signal_description}
+                </p>
+              )}
+
               {/* Score + reasons */}
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-1.5">
