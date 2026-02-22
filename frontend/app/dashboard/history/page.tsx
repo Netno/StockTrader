@@ -15,10 +15,10 @@ export default async function HistoryPage() {
   const winRate     = trades.length > 0 ? Math.round((winners.length / trades.length) * 100) : 0;
 
   const closeReasonLabel: Record<string, string> = {
-    stop_loss:   "Stop-loss",
-    take_profit: "Take-profit",
+    stop_loss:   "Stop-loss natt",
+    take_profit: "Take-profit natt",
     signal:      "Saljsignal",
-    manual:      "Manuell",
+    manual:      "Stangd manuellt",
   };
 
   return (

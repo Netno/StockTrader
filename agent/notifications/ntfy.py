@@ -50,8 +50,10 @@ async def send_sell_signal(
         f"{reasons_str}\n"
         f"Confidence: {confidence:.0f}%"
     )
+    dashboard_url = f"{FRONTEND_URL}/dashboard" if FRONTEND_URL else None
     await _send(message, title=f"SALJ {ticker}", priority="high",
-                tags=["chart_with_downwards_trend"], notif_type="sell_signal", ticker=ticker)
+                tags=["chart_with_downwards_trend"], notif_type="sell_signal", ticker=ticker,
+                click_url=dashboard_url)
 
 
 async def send_report_warning(ticker: str, company: str, report_date: str, has_position: bool):

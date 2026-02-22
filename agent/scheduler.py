@@ -148,25 +148,20 @@ async def process_ticker(ticker: str):
         hit_tp = price >= position["take_profit_price"]
 
         if hit_sl or hit_tp:
-            # Auto-close: stop-loss or take-profit triggered
-            close_reason = "stop_loss" if hit_sl else "take_profit"
+            # Alert user to sell on Avanza — no auto-close
             label = "Stop-loss" if hit_sl else "Take-profit"
-            reasons = [f"{label} natt ({price:.2f} kr)"]
+            reasons = [f"{label} natt ({price:.2f} kr) — salj pa Avanza"]
 
             await db.save_signal(
                 ticker, "SELL", price, qty, 100.0, 100, reasons, indicators, 0.0, 0.0,
             )
-            if trade_id:
-                await db.close_trade(trade_id, price, close_reason, pnl_kr, pnl_pct)
             await ntfy.send_sell_signal(
                 ticker, company, price, qty, pnl_pct, pnl_kr, reasons, 100.0,
             )
 
-            del open_positions[ticker]
             daily_signals += 1
-            daily_trades += 1
             logger.info(
-                f"AUTO-STANG {ticker} ({close_reason}) | P&L={pnl_pct:+.1f}% ({pnl_kr:+.0f} kr)"
+                f"SALJ-ALERT {ticker} ({label}) | pris={price} | anvandaren maste salja pa Avanza"
             )
 
         else:
@@ -177,22 +172,19 @@ async def process_ticker(ticker: str):
 
             if sell_score >= SIGNAL_THRESHOLD:
                 confidence = min(99.0, float(sell_score))
+                sell_reasons.append("Salj pa Avanza och stang positionen i appen")
 
                 await db.save_signal(
                     ticker, "SELL", price, qty, confidence, sell_score,
                     sell_reasons, indicators, 0.0, 0.0,
                 )
-                if trade_id:
-                    await db.close_trade(trade_id, price, "signal", pnl_kr, pnl_pct)
                 await ntfy.send_sell_signal(
                     ticker, company, price, qty, pnl_pct, pnl_kr, sell_reasons, confidence,
                 )
 
-                del open_positions[ticker]
                 daily_signals += 1
-                daily_trades += 1
                 logger.info(
-                    f"SALJ {ticker} | score={sell_score} | P&L={pnl_pct:+.1f}% ({pnl_kr:+.0f} kr)"
+                    f"SALJ-SIGNAL {ticker} | score={sell_score} | anvandaren maste salja pa Avanza"
                 )
 
     # 4b. BUY logic — generates a PENDING signal; user must confirm via dashboard

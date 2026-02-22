@@ -166,8 +166,8 @@ export default async function SignalsPage() {
                   {s.signal_type === "BUY" ? (
                     <SignalActions signalId={s.id} status={s.status ?? "pending"} />
                   ) : (
-                    <span className="text-xs text-gray-500">
-                      {s.status === "auto" ? "Auto-stangd" : s.status ?? "–"}
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
+                      Salj pa Avanza
                     </span>
                   )}
                 </td>
