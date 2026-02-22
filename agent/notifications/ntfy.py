@@ -24,7 +24,7 @@ async def send_buy_signal(
         f"Take-profit: {take_profit:.2f} kr\n"
         f"Confidence: {confidence:.0f}%"
     )
-    signals_url = f"{FRONTEND_URL}/signals" if FRONTEND_URL else None
+    signals_url = f"{FRONTEND_URL}/dashboard/signals" if FRONTEND_URL else None
     await _send(message, title=f"KOP {ticker}", priority="high",
                 tags=["chart_with_upwards_trend"], notif_type="buy_signal", ticker=ticker,
                 click_url=signals_url)
