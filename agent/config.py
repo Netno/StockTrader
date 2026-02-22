@@ -7,11 +7,6 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Avanza
-AVANZA_USERNAME = os.getenv("AVANZA_USERNAME")
-AVANZA_PASSWORD = os.getenv("AVANZA_PASSWORD")
-AVANZA_TOTP_SECRET = os.getenv("AVANZA_TOTP_SECRET")
-
 # Google Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
