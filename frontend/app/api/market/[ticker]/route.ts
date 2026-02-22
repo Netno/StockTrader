@@ -10,7 +10,7 @@ const YAHOO_SYMBOLS: Record<string, string> = {
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': '*/*',
+  'Accept': 'application/json',
   'Accept-Language': 'en-US,en;q=0.9',
 }
 
@@ -24,19 +24,28 @@ export async function GET(
   const type = req.nextUrl.searchParams.get('type') ?? 'price'
 
   try {
-    if (type === 'history') {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1y`
-      const resp = await fetch(url, { headers: HEADERS })
-      const json = await resp.json()
-      const result = json?.chart?.result?.[0]
-      if (!result) return NextResponse.json({ error: 'No data' }, { status: 404 })
+    const range = type === 'history' ? '1y' : '1d'
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`
+    const resp = await fetch(url, { headers: HEADERS })
+    const json = await resp.json()
 
+    // Return raw for debugging if needed
+    if (req.nextUrl.searchParams.get('debug') === '1') {
+      return NextResponse.json(json)
+    }
+
+    const result = json?.chart?.result?.[0]
+    if (!result) {
+      return NextResponse.json({ error: 'No data', raw: json }, { status: 404 })
+    }
+
+    if (type === 'history') {
       const timestamps: number[] = result.timestamp ?? []
       const ohlcv = result.indicators?.quote?.[0] ?? {}
       const adjclose = result.indicators?.adjclose?.[0]?.adjclose ?? ohlcv.close
 
       const data = timestamps.map((ts: number, i: number) => ({
-        date: new Date(ts * 1000).toISOString().split('T')[0],
+        date:   new Date(ts * 1000).toISOString().split('T')[0],
         open:   ohlcv.open?.[i]   ?? null,
         high:   ohlcv.high?.[i]   ?? null,
         low:    ohlcv.low?.[i]    ?? null,
@@ -45,18 +54,12 @@ export async function GET(
       })).filter(r => r.close !== null)
 
       return NextResponse.json({ data })
-
     } else {
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price`
-      const resp = await fetch(url, { headers: HEADERS })
-      const json = await resp.json()
-      const price = json?.quoteSummary?.result?.[0]?.price
-      if (!price) return NextResponse.json({ error: 'No data' }, { status: 404 })
-
+      const meta = result.meta
       return NextResponse.json({
-        price:      price.regularMarketPrice?.raw ?? 0,
-        change_pct: price.regularMarketChangePercent?.raw ?? 0,
-        volume:     price.regularMarketVolume?.raw ?? 0,
+        price:      meta?.regularMarketPrice ?? 0,
+        change_pct: meta?.regularMarketChangePercent ?? 0,
+        volume:     meta?.regularMarketVolume ?? 0,
       })
     }
   } catch (err) {
