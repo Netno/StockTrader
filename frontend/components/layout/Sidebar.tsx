@@ -17,7 +17,7 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col py-6 px-3">
+    <aside className="hidden md:flex w-56 shrink-0 bg-gray-900 border-r border-gray-800 flex-col py-6 px-3">
       <div className="px-3 mb-8">
         <div className="flex items-center gap-2">
           <BarChart2 className="text-blue-400" size={20} />
