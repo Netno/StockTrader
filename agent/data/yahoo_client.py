@@ -38,14 +38,11 @@ def _set_cache(key: str, value, ttl: int):
 
 def _fetch_history(symbol: str, period: str) -> pd.DataFrame:
     """Blocking yfinance call — run via asyncio.to_thread."""
-    df = yf.download(symbol, period=period, interval="1d", progress=False, auto_adjust=True, session=_session)
+    df = yf.Ticker(symbol, session=_session).history(period=period, interval="1d", auto_adjust=True)
     if df.empty:
         return pd.DataFrame()
     df = df.reset_index()
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = [c[0].lower() for c in df.columns]
-    else:
-        df.columns = [c.lower() for c in df.columns]
+    df.columns = [c.lower() for c in df.columns]
     return df[["date", "open", "high", "low", "close", "volume"]].dropna()
 
 
