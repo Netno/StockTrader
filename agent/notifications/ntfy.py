@@ -1,6 +1,6 @@
 import httpx
 from datetime import datetime, timezone
-from config import NTFY_URL, PAPER_TRADING
+from config import NTFY_URL, PAPER_TRADING, FRONTEND_URL
 
 
 async def send_buy_signal(
@@ -24,8 +24,10 @@ async def send_buy_signal(
         f"Take-profit: {take_profit:.2f} kr\n"
         f"Confidence: {confidence:.0f}%"
     )
+    signals_url = f"{FRONTEND_URL}/signals" if FRONTEND_URL else None
     await _send(message, title=f"KOP {ticker}", priority="high",
-                tags=["chart_with_upwards_trend"], notif_type="buy_signal", ticker=ticker)
+                tags=["chart_with_upwards_trend"], notif_type="buy_signal", ticker=ticker,
+                click_url=signals_url)
 
 
 async def send_sell_signal(
@@ -107,10 +109,13 @@ async def _send(
     tags: list = None,
     notif_type: str = "info",
     ticker: str = None,
+    click_url: str = None,
 ):
     headers = {"Title": title, "Priority": priority}
     if tags:
         headers["Tags"] = ",".join(tags)
+    if click_url:
+        headers["Click"] = click_url
 
     async with httpx.AsyncClient() as client:
         try:

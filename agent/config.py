@@ -18,6 +18,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "mike_stock_73")
 NTFY_URL = f"https://ntfy.sh/{NTFY_TOPIC}"
 
+# Frontend URL (used in ntfy links)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
+
 # App settings
 PAPER_TRADING = os.getenv("PAPER_TRADING", "true").lower() == "true"
 PAPER_BALANCE = float(os.getenv("PAPER_BALANCE", "10000"))
