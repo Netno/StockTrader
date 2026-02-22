@@ -2,6 +2,9 @@ import asyncio
 import time
 import yfinance as yf
 import pandas as pd
+from curl_cffi import requests as curl_requests
+
+_session = curl_requests.Session(impersonate="chrome")
 
 # Mapping from our ticker names to Yahoo Finance symbols
 YAHOO_SYMBOLS = {
@@ -35,7 +38,7 @@ def _set_cache(key: str, value, ttl: int):
 
 def _fetch_history(symbol: str, period: str) -> pd.DataFrame:
     """Blocking yfinance call — run via asyncio.to_thread."""
-    df = yf.download(symbol, period=period, interval="1d", progress=False, auto_adjust=True)
+    df = yf.download(symbol, period=period, interval="1d", progress=False, auto_adjust=True, session=_session)
     if df.empty:
         return pd.DataFrame()
     df = df.reset_index()
@@ -48,7 +51,7 @@ def _fetch_history(symbol: str, period: str) -> pd.DataFrame:
 
 def _fetch_current_price(symbol: str) -> dict:
     """Blocking yfinance call — run via asyncio.to_thread."""
-    info = yf.Ticker(symbol).fast_info
+    info = yf.Ticker(symbol, session=_session).fast_info
     return {
         "price": info.last_price,
         "volume": info.three_month_average_volume,
