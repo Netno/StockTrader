@@ -67,4 +67,11 @@ TICKERS = {
         "take_profit_pct": 0.09,
         "atr_multiplier": 1.3,
     },
+    "VOLV B": {
+        "name": "Volvo",
+        "strategy": "cyclical_trend",
+        "stop_loss_pct": 0.045,
+        "take_profit_pct": 0.09,
+        "atr_multiplier": 1.3,
+    },
 }
