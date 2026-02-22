@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import RsiChart from "@/components/dashboard/RsiChart";
 import BollingerChart from "@/components/dashboard/BollingerChart";
+import AnalyzeButton from "@/components/dashboard/AnalyzeButton";
 import Link from "next/link";
 
 export const revalidate = 30;
@@ -87,6 +88,7 @@ export default async function StockDetailPage({
             >
               Avanza ↗
             </a>
+            <AnalyzeButton ticker={ticker} />
           </div>
           {price && (
             <p className="text-3xl font-bold mt-1">{price.toFixed(2)} kr</p>
