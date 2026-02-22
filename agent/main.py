@@ -443,6 +443,24 @@ async def trigger_single_ticker(ticker: str):
     return {"ok": True, "message": f"Bearbetning klar for {ticker}."}
 
 
+@app.post("/api/notify-test")
+async def send_test_notification():
+    """Send a test push notification via ntfy."""
+    from notifications import ntfy
+    await ntfy.send_buy_signal(
+        ticker="EVO",
+        company="Evolution",
+        price=532.20,
+        quantity=4,
+        total=2128.80,
+        reasons=["TEST: RSI 32 (oversalt)", "TEST: MACD crossover uppat"],
+        stop_loss=525.28,
+        take_profit=574.78,
+        confidence=75.0,
+    )
+    return {"ok": True, "message": "Testnotis skickad till ntfy."}
+
+
 @app.post("/api/test-signal")
 async def insert_test_signal():
     """Insert a fake pending BUY signal for EVO to test the confirm/reject flow."""
