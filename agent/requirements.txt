@@ -6,6 +6,5 @@ supabase==2.4.0
 httpx==0.25.2
 feedparser==6.0.11
 google-genai>=0.8.0
-pandas==2.2.3
-pandas-ta==0.4.71b0
+pandas-ta==0.4.67b0
 python-dotenv==1.0.1
