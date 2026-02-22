@@ -441,3 +441,40 @@ async def trigger_single_ticker(ticker: str):
     ticker = ticker.upper()
     await process_ticker(ticker)
     return {"ok": True, "message": f"Bearbetning klar for {ticker}."}
+
+
+@app.post("/api/test-signal")
+async def insert_test_signal():
+    """Insert a fake pending BUY signal for EVO to test the confirm/reject flow."""
+    from db.supabase_client import save_signal, get_client
+    from data.yahoo_client import get_current_price
+    from analysis.decision_engine import calculate_stop_take
+
+    ticker = "EVO"
+    current = await get_current_price(ticker)
+    price = current.get("price") or 500.0
+    quantity = 4
+    stop_loss, take_profit = calculate_stop_take(ticker, price, {"atr": price * 0.01})
+
+    signal_id = await save_signal(
+        ticker=ticker,
+        signal_type="BUY",
+        price=price,
+        quantity=quantity,
+        confidence=75.0,
+        score=75,
+        reasons=["TEST: RSI oversalt", "TEST: MACD crossover uppat"],
+        indicators={"current_price": price, "rsi": 32.0},
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+    )
+    return {
+        "ok": True,
+        "signal_id": signal_id,
+        "ticker": ticker,
+        "price": price,
+        "quantity": quantity,
+        "stop_loss": stop_loss,
+        "take_profit": take_profit,
+        "message": "Testsignal skapad — ga till /api/signals eller frontenden for att bekrafta.",
+    }
