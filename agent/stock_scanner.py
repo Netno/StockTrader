@@ -193,42 +193,57 @@ async def run_scan():
     current_scored.sort(key=lambda x: x["score"])
     weakest = current_scored[:2] if current_scored else []
 
-    suggestions = []
+    # Check which tickers have open positions (don't replace those)
+    open_trades = db.table("stock_trades").select("ticker").eq("status", "open").execute()
+    open_tickers = {t["ticker"] for t in (open_trades.data or [])}
+
+    replaced = []
+    replaced_tickers = set()
+
     for candidate in top_new:
         for weak in weakest:
+            if weak["ticker"] in replaced_tickers:
+                continue
+            if weak["ticker"] in open_tickers:
+                logger.info(f"Hoppar over {weak['ticker']} — oppna position finns.")
+                continue
             if candidate["score"] > weak["score"] + 10:
-                suggestion = {
-                    "suggested_ticker": candidate["ticker"],
-                    "suggested_name": candidate["name"],
-                    "suggested_score": candidate["score"],
-                    "suggested_reasons": candidate["reasons"],
-                    "replace_ticker": weak["ticker"],
-                    "replace_name": weak["name"],
-                    "replace_score": weak["score"],
-                    "status": "pending",
+                # Deactivate the weak stock
+                db.table("stock_watchlist").update({"active": False}).eq("ticker", weak["ticker"]).execute()
+
+                # Add the better stock
+                db.table("stock_watchlist").insert({
+                    "ticker": candidate["ticker"],
+                    "name": candidate["name"],
+                    "strategy": "trend_following",
+                    "stop_loss_pct": 0.05,
+                    "take_profit_pct": 0.10,
+                    "atr_multiplier": 1.3,
+                    "active": True,
                     "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-                db.table("stock_suggestions").insert(suggestion).execute()
-                suggestions.append(suggestion)
+                }).execute()
+
+                replaced.append((weak, candidate))
+                replaced_tickers.add(weak["ticker"])
                 logger.info(
-                    f"Förslag: byt {weak['ticker']} ({weak['score']:.0f}p) "
-                    f"mot {candidate['ticker']} ({candidate['score']:.0f}p)"
+                    f"Bytte {weak['ticker']} ({weak['score']:.0f}p) mot "
+                    f"{candidate['ticker']} ({candidate['score']:.0f}p) i watchlistan"
                 )
+                break
 
     # Send ntfy summary
-    if suggestions:
+    if replaced:
         lines = "\n".join(
-            f"  ↕ Byt {s['replace_ticker']} ({s['replace_score']:.0f}p) → "
-            f"{s['suggested_ticker']} ({s['suggested_score']:.0f}p)"
-            for s in suggestions[:3]
+            f"  {w['ticker']} ({w['score']:.0f}p) -> {c['ticker']} ({c['score']:.0f}p)"
+            for w, c in replaced[:3]
         )
         await ntfy._send(
-            f"📊 Veckoanalys klar – {len(suggestions)} förslag:\n{lines}\n\nGodkänn i dashboarden.",
-            title="Watchlist-förslag",
+            f"Watchlist uppdaterad – {len(replaced)} byte(n):\n{lines}",
+            title="Watchlist uppdaterad",
             priority="default",
             tags=["bar_chart"],
         )
     else:
-        logger.info("Inga bytesförslag – nuvarande watchlist är fortsatt optimal.")
+        logger.info("Inga byten – nuvarande watchlist ar fortsatt optimal.")
 
     logger.info(f"Skanning klar. {len(results)} aktier analyserade, {len(suggestions)} förslag.")
