@@ -20,7 +20,7 @@ export default function AnalyzeButton({ ticker }: { ticker: string }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setDone(true);
-      setTimeout(() => window.location.reload(), 1500);
+      setTimeout(() => window.location.reload(), 8000);
     } catch (e: any) {
       setError(e.message ?? "Nätverksfel");
     }
@@ -34,7 +34,7 @@ export default function AnalyzeButton({ ticker }: { ticker: string }) {
         disabled={loading}
         className="text-xs border border-gray-700 hover:border-gray-500 text-gray-400 hover:text-white rounded-lg px-3 py-1.5 transition disabled:opacity-50"
       >
-        {loading ? "Analyserar..." : done ? "✓ Klar" : "Analysera nu"}
+        {loading ? "Analyserar..." : done ? "✓ Laddar om..." : "Analysera nu"}
       </button>
       {error && <span className="text-xs text-red-400">{error}</span>}
     </div>

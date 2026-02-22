@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from scheduler import setup_scheduler, load_open_positions
 
@@ -485,12 +485,12 @@ async def trigger_trading_loop():
 
 
 @app.post("/api/run/{ticker}")
-async def trigger_single_ticker(ticker: str):
+async def trigger_single_ticker(ticker: str, background_tasks: BackgroundTasks):
     """Manually run process_ticker for a single ticker (full DB writes + signal generation)."""
     from scheduler import process_ticker
     ticker = ticker.upper()
-    await process_ticker(ticker)
-    return {"ok": True, "message": f"Bearbetning klar for {ticker}."}
+    background_tasks.add_task(process_ticker, ticker)
+    return {"ok": True, "message": f"Analys av {ticker} startad i bakgrunden."}
 
 
 @app.post("/api/notify-test")
