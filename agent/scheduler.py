@@ -265,8 +265,14 @@ async def evening_summary():
     await ntfy.send_evening_summary(portfolio_value, portfolio_pct, daily_signals, daily_trades)
 
 
+async def daily_scan():
+    """17:45 Mon–Fri – scan full universe, rotate watchlist if better candidates found."""
+    from stock_scanner import run_scan
+    await run_scan()
+
+
 async def weekly_scan():
-    """Sunday 18:00 – scan broader universe and suggest watchlist changes."""
+    """Sunday 18:00 – full universe scan (same as daily but explicit)."""
     from stock_scanner import run_scan
     await run_scan()
 
@@ -283,6 +289,8 @@ def setup_scheduler() -> AsyncIOScheduler:
     )
     # 17:35 – Kvallssummering
     scheduler.add_job(evening_summary, CronTrigger(day_of_week="mon-fri", hour=17, minute=35))
+    # 17:45 – Daglig skanning av hela universumet
+    scheduler.add_job(daily_scan, CronTrigger(day_of_week="mon-fri", hour=17, minute=45))
     # Sondag 18:00 – veckovis aktiesskanning
     scheduler.add_job(weekly_scan, CronTrigger(day_of_week="sun", hour=18, minute=0))
 
