@@ -3,7 +3,6 @@ import { supabase } from "@/lib/supabase";
 import StatCard from "@/components/dashboard/StatCard";
 import SignalActions from "@/components/dashboard/SignalActions";
 import TradeClose from "@/components/dashboard/TradeClose";
-import DepositButton from "@/components/dashboard/DepositButton";
 import Link from "next/link";
 
 export const revalidate = 15;
@@ -77,22 +76,6 @@ export default async function DashboardPage() {
           )}% vinst` : undefined}
         />
       </div>
-
-      {/* Capital management */}
-      {(summaryData?.total_deposited ?? 0) === 0 ? (
-        <div className="bg-blue-500/5 border border-blue-500/30 rounded-xl p-4">
-          <p className="text-sm text-blue-400 font-semibold mb-3">Ingen insättning gjord än — sätt in kapital för att starta</p>
-          <div className="max-w-xs">
-            <DepositButton />
-          </div>
-        </div>
-      ) : (
-        <div className="flex justify-end">
-          <div className="w-48">
-            <DepositButton />
-          </div>
-        </div>
-      )}
 
       {/* Pending signals banner */}
       {pendingSignals.length > 0 && (
