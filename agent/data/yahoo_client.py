@@ -1,28 +1,27 @@
-import asyncio
 import time
-import yfinance as yf
+import httpx
 import pandas as pd
-from curl_cffi import requests as curl_requests
+from config import TWELVE_DATA_API_KEY
 
-_session = curl_requests.Session(impersonate="chrome")
+BASE_URL = "https://api.twelvedata.com"
 
-# Mapping from our ticker names to Yahoo Finance symbols
-YAHOO_SYMBOLS = {
-    "EVO":      "EVO.ST",
-    "SINCH":    "SINCH.ST",
-    "EMBRAC B": "EMBRAC-B.ST",
-    "HTRO":     "HTRO.ST",
-    "SSAB B":   "SSAB-B.ST",
+# Mapping from our ticker names to Twelve Data symbols (exchange: STO = Stockholm)
+TWELVE_SYMBOLS = {
+    "EVO":      "EVO:STO",
+    "SINCH":    "SINCH:STO",
+    "EMBRAC B": "EMBRAC-B:STO",
+    "HTRO":     "HTRO:STO",
+    "SSAB B":   "SSAB-B:STO",
 }
 
 # Simple in-memory cache: key -> (value, expires_at)
 _cache: dict[str, tuple] = {}
-_HISTORY_TTL = 300   # 5 minutes — history data doesn't change tick-by-tick
-_PRICE_TTL   = 60    # 1 minute — current price is more time-sensitive
+_HISTORY_TTL = 300   # 5 minutes
+_PRICE_TTL   = 60    # 1 minute
 
 
 def _symbol(ticker: str) -> str:
-    return YAHOO_SYMBOLS.get(ticker, ticker)
+    return TWELVE_SYMBOLS.get(ticker, ticker)
 
 
 def _get_cache(key: str):
@@ -36,48 +35,57 @@ def _set_cache(key: str, value, ttl: int):
     _cache[key] = (value, time.monotonic() + ttl)
 
 
-def _fetch_history(symbol: str, period: str) -> pd.DataFrame:
-    """Blocking yfinance call — run via asyncio.to_thread."""
-    df = yf.Ticker(symbol, session=_session).history(period=period, interval="1d", auto_adjust=True)
-    if df.empty:
-        return pd.DataFrame()
-    df = df.reset_index()
-    df.columns = [c.lower() for c in df.columns]
-    return df[["date", "open", "high", "low", "close", "volume"]].dropna()
-
-
-def _fetch_current_price(symbol: str) -> dict:
-    """Blocking yfinance call — run via asyncio.to_thread."""
-    info = yf.Ticker(symbol, session=_session).fast_info
-    return {
-        "price": info.last_price,
-        "volume": info.three_month_average_volume,
-        "change_pct": None,
-    }
-
-
 async def get_price_history(ticker: str, days: int = 220) -> pd.DataFrame:
-    """Fetch historical OHLCV data via Yahoo Finance (cached, non-blocking)."""
+    """Fetch historical OHLCV data via Twelve Data (cached)."""
     cache_key = f"history:{ticker}:{days}"
     cached = _get_cache(cache_key)
     if cached is not None:
         return cached
 
     symbol = _symbol(ticker)
-    period = "1y" if days <= 365 else "2y"
-    df = await asyncio.to_thread(_fetch_history, symbol, period)
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(
+            f"{BASE_URL}/time_series",
+            params={
+                "symbol": symbol,
+                "interval": "1day",
+                "outputsize": days,
+                "apikey": TWELVE_DATA_API_KEY,
+            },
+        )
+    data = resp.json()
+
+    if data.get("status") == "error" or "values" not in data:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(data["values"])
+    df["date"] = pd.to_datetime(df["datetime"])
+    for col in ["open", "high", "low", "close", "volume"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df[["date", "open", "high", "low", "close", "volume"]].dropna()
+    df = df.sort_values("date").reset_index(drop=True)
+
     _set_cache(cache_key, df, _HISTORY_TTL)
     return df
 
 
 async def get_current_price(ticker: str) -> dict:
-    """Get current price and volume via Yahoo Finance (cached, non-blocking)."""
+    """Get current price via Twelve Data (cached)."""
     cache_key = f"price:{ticker}"
     cached = _get_cache(cache_key)
     if cached is not None:
         return cached
 
     symbol = _symbol(ticker)
-    result = await asyncio.to_thread(_fetch_current_price, symbol)
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{BASE_URL}/price",
+            params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY},
+        )
+    data = resp.json()
+
+    price = float(data.get("price", 0) or 0)
+    result = {"price": price, "volume": None, "change_pct": None}
+
     _set_cache(cache_key, result, _PRICE_TTL)
     return result
