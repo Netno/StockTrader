@@ -1,27 +1,15 @@
+import os
 import time
 import httpx
 import pandas as pd
-from config import TWELVE_DATA_API_KEY
 
-BASE_URL = "https://api.twelvedata.com"
-
-# Mapping from our ticker names to Twelve Data symbols (exchange: STO = Stockholm)
-TWELVE_SYMBOLS = {
-    "EVO":      "EVO:STO",
-    "SINCH":    "SINCH:STO",
-    "EMBRAC B": "EMBRAC-B:STO",
-    "HTRO":     "HTRO:STO",
-    "SSAB B":   "SSAB-B:STO",
-}
+# Vercel frontend acts as Yahoo Finance proxy (Railway IPs are blocked by Yahoo)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
 
 # Simple in-memory cache: key -> (value, expires_at)
 _cache: dict[str, tuple] = {}
 _HISTORY_TTL = 300   # 5 minutes
 _PRICE_TTL   = 60    # 1 minute
-
-
-def _symbol(ticker: str) -> str:
-    return TWELVE_SYMBOLS.get(ticker, ticker)
 
 
 def _get_cache(key: str):
@@ -36,32 +24,29 @@ def _set_cache(key: str, value, ttl: int):
 
 
 async def get_price_history(ticker: str, days: int = 220) -> pd.DataFrame:
-    """Fetch historical OHLCV data via Twelve Data (cached)."""
+    """Fetch historical OHLCV data via Vercel proxy (cached)."""
     cache_key = f"history:{ticker}:{days}"
     cached = _get_cache(cache_key)
     if cached is not None:
         return cached
 
-    symbol = _symbol(ticker)
+    url = f"{FRONTEND_URL}/api/market/{ticker}?type=history"
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(
-            f"{BASE_URL}/time_series",
-            params={
-                "symbol": symbol,
-                "interval": "1day",
-                "outputsize": days,
-                "apikey": TWELVE_DATA_API_KEY,
-            },
-        )
-    data = resp.json()
+        resp = await client.get(url)
 
-    if data.get("status") == "error" or "values" not in data:
+    data = resp.json()
+    if "error" in data or "data" not in data:
         return pd.DataFrame()
 
-    df = pd.DataFrame(data["values"])
-    df["date"] = pd.to_datetime(df["datetime"])
+    rows = data["data"]
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
     for col in ["open", "high", "low", "close", "volume"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df[["date", "open", "high", "low", "close", "volume"]].dropna()
     df = df.sort_values("date").reset_index(drop=True)
 
@@ -70,22 +55,22 @@ async def get_price_history(ticker: str, days: int = 220) -> pd.DataFrame:
 
 
 async def get_current_price(ticker: str) -> dict:
-    """Get current price via Twelve Data (cached)."""
+    """Get current price via Vercel proxy (cached)."""
     cache_key = f"price:{ticker}"
     cached = _get_cache(cache_key)
     if cached is not None:
         return cached
 
-    symbol = _symbol(ticker)
+    url = f"{FRONTEND_URL}/api/market/{ticker}?type=price"
     async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{BASE_URL}/price",
-            params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY},
-        )
-    data = resp.json()
+        resp = await client.get(url)
 
-    price = float(data.get("price", 0) or 0)
-    result = {"price": price, "volume": None, "change_pct": None}
+    data = resp.json()
+    result = {
+        "price": float(data.get("price") or 0),
+        "volume": data.get("volume"),
+        "change_pct": data.get("change_pct"),
+    }
 
     _set_cache(cache_key, result, _PRICE_TTL)
     return result
