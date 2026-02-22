@@ -11,9 +11,10 @@ const YAHOO_SYMBOLS: Record<string, string> = {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { ticker: string } }
+  { params }: { params: Promise<{ ticker: string }> }
 ) {
-  const ticker = decodeURIComponent(params.ticker)
+  const { ticker: rawTicker } = await params
+  const ticker = decodeURIComponent(rawTicker)
   const symbol = YAHOO_SYMBOLS[ticker] ?? ticker
   const type = req.nextUrl.searchParams.get('type') ?? 'price'
 
