@@ -1,5 +1,35 @@
+from typing import Optional
 import pandas as pd
 import pandas_ta as pta
+
+
+def calculate_relative_strength(
+    stock_df: pd.DataFrame,
+    index_df: pd.DataFrame,
+    period: int = 20,
+) -> Optional[float]:
+    """
+    Calculate relative strength of stock vs OMXS30 over last `period` trading days.
+    Returns (1+stock_return) / (1+index_return).
+    > 1.0 = outperforming the index, < 1.0 = underperforming.
+    Returns None if data is insufficient.
+    """
+    if stock_df is None or index_df is None:
+        return None
+    if stock_df.empty or index_df.empty:
+        return None
+    if len(stock_df) < period or len(index_df) < period:
+        return None
+
+    stock_return = (stock_df["close"].iloc[-1] / stock_df["close"].iloc[-period]) - 1
+    index_return = (index_df["close"].iloc[-1] / index_df["close"].iloc[-period]) - 1
+
+    denominator = 1 + index_return
+    if denominator == 0:
+        return None
+
+    rs = (1 + stock_return) / denominator
+    return round(float(rs), 4)
 
 
 def calculate_indicators(df: pd.DataFrame) -> dict:

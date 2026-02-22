@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart2, LayoutDashboard, LineChart, TrendingUp, Clock, Lightbulb, LogOut } from "lucide-react";
+import { BarChart2, LayoutDashboard, LineChart, TrendingUp, Clock, Lightbulb, Settings, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 const links = [
-  { href: "/dashboard",             label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/stocks",      label: "Aktier",    icon: LineChart },
-  { href: "/dashboard/signals",     label: "Signaler",  icon: TrendingUp },
-  { href: "/dashboard/history",     label: "Historik",  icon: Clock },
-  { href: "/dashboard/suggestions", label: "Forslag",   icon: Lightbulb },
+  { href: "/dashboard",             label: "Dashboard",   icon: LayoutDashboard },
+  { href: "/dashboard/stocks",      label: "Aktier",      icon: LineChart },
+  { href: "/dashboard/signals",     label: "Signaler",    icon: TrendingUp },
+  { href: "/dashboard/history",     label: "Historik",    icon: Clock },
+  { href: "/dashboard/suggestions", label: "Förslag",     icon: Lightbulb },
+  { href: "/dashboard/settings",    label: "Inställningar", icon: Settings },
 ];
 
 export default function Sidebar() {

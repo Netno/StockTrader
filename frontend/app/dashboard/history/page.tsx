@@ -15,15 +15,15 @@ export default async function HistoryPage() {
   const winRate     = trades.length > 0 ? Math.round((winners.length / trades.length) * 100) : 0;
 
   const closeReasonLabel: Record<string, string> = {
-    stop_loss:   "Stop-loss natt",
-    take_profit: "Take-profit natt",
-    signal:      "Saljsignal",
-    manual:      "Stangd manuellt",
+    stop_loss:   "Stop-loss nådd",
+    take_profit: "Take-profit nådd",
+    signal:      "Säljsignal",
+    manual:      "Stängd manuellt",
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">Handelhistorik</h1>
+      <h1 className="text-xl font-bold">Handelshistorik</h1>
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -34,7 +34,7 @@ export default async function HistoryPage() {
           </p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
-          <p className="text-gray-500 text-xs mb-1">Affarer</p>
+          <p className="text-gray-500 text-xs mb-1">Affärer</p>
           <p className="text-2xl font-bold">{trades.length}</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
@@ -44,7 +44,7 @@ export default async function HistoryPage() {
           </p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
-          <p className="text-gray-500 text-xs mb-1">Vinst / Forlust</p>
+          <p className="text-gray-500 text-xs mb-1">Vinst / Förlust</p>
           <p className="text-lg font-bold">
             <span className="text-green-400">{winners.length}</span>
             <span className="text-gray-600 mx-1">/</span>
@@ -58,8 +58,8 @@ export default async function HistoryPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-500 border-b border-gray-800">
-              <th className="p-4">Oppnad</th>
-              <th className="p-4">Stangd</th>
+              <th className="p-4">Öppnad</th>
+              <th className="p-4">Stängd</th>
               <th className="p-4">Ticker</th>
               <th className="p-4">Inpris</th>
               <th className="p-4">Utpris</th>
@@ -72,7 +72,7 @@ export default async function HistoryPage() {
             {trades.length === 0 && (
               <tr>
                 <td colSpan={8} className="p-6 text-center text-gray-500">
-                  Inga avslutade affarer an.
+                  Inga avslutade affärer än.
                 </td>
               </tr>
             )}

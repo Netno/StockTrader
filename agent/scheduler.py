@@ -1,13 +1,14 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, date, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from config import TICKERS, PAPER_BALANCE, MAX_POSITIONS, SIGNAL_THRESHOLD
-from data.yahoo_client import get_price_history, get_current_price
+from config import TICKERS, PAPER_BALANCE
+import settings as _settings
+from data.yahoo_client import get_price_history, get_current_price, get_index_history, get_earnings_date
 from data.news_fetcher import fetch_news
 from data.insider_fetcher import fetch_insider_trades
-from analysis.indicators import calculate_indicators
+from analysis.indicators import calculate_indicators, calculate_relative_strength
 from analysis.sentiment import analyze_sentiment, generate_signal_description
 from analysis.decision_engine import (
     score_buy_signal,
@@ -74,6 +75,13 @@ async def trading_loop():
     now = datetime.now(timezone.utc)
     logger.info(f"Trading loop tick: {now.strftime('%H:%M:%S')}")
 
+    # Fetch OMXS30 once per loop — passed to each ticker for relative strength
+    try:
+        index_df = await get_index_history()
+    except Exception as e:
+        logger.warning(f"Kunde inte hämta OMXS30-data: {e}")
+        index_df = None
+
     watchlist = await db.get_watchlist()
 
     for stock in watchlist:
@@ -84,12 +92,12 @@ async def trading_loop():
             continue
 
         try:
-            await process_ticker(ticker)
+            await process_ticker(ticker, index_df=index_df)
         except Exception as e:
             logger.error(f"Fel vid bearbetning av {ticker}: {e}", exc_info=True)
 
 
-async def process_ticker(ticker: str):
+async def process_ticker(ticker: str, index_df=None):
     global daily_signals, daily_trades
     company = TICKERS.get(ticker, {}).get("name", ticker)
 
@@ -111,7 +119,12 @@ async def process_ticker(ticker: str):
     await db.save_price(ticker, price, volume)
     await db.save_indicators(ticker, indicators)
 
-    # 2. News + sentiment
+    # 2. Relative strength vs OMXS30
+    rs = calculate_relative_strength(df, index_df) if index_df is not None else None
+    if rs is not None:
+        indicators["relative_strength"] = rs
+
+    # 3. News + sentiment
     news_list = await fetch_news(ticker, company)
     latest_sentiment = None
 
@@ -130,8 +143,21 @@ async def process_ticker(ticker: str):
         if latest_sentiment is None:
             latest_sentiment = sentiment
 
-    # 3. Insider data
+    # 4. Insider data
     insider_trades = await fetch_insider_trades(ticker)
+
+    # 5. Earnings date — avoid buying within 48h of a report
+    has_report_soon = False
+    try:
+        earnings_str = await get_earnings_date(ticker)
+        if earnings_str:
+            report_date = date.fromisoformat(earnings_str[:10])
+            delta = (report_date - date.today()).days
+            has_report_soon = 0 <= delta <= 2
+            if has_report_soon:
+                logger.info(f"{ticker}: rapport om {delta} dag(ar) — köp-penalty aktiv")
+    except Exception as e:
+        logger.debug(f"{ticker}: Kunde inte hämta rapportdatum: {e}")
 
     in_position = ticker in open_positions
 
@@ -170,10 +196,10 @@ async def process_ticker(ticker: str):
         else:
             # Check indicator-based sell signal
             sell_score, sell_reasons = score_sell_signal(
-                ticker, indicators, position, latest_sentiment
+                ticker, indicators, position, latest_sentiment, relative_strength=rs
             )
 
-            if sell_score >= SIGNAL_THRESHOLD:
+            if sell_score >= _settings.get_int("signal_threshold"):
                 confidence = min(99.0, float(sell_score))
                 sell_reasons.append("Salj pa Avanza och stang positionen i appen")
                 news_headline = news_list[0]["headline"] if news_list else ""
@@ -197,19 +223,20 @@ async def process_ticker(ticker: str):
     else:
         buy_score, buy_reasons = score_buy_signal(
             ticker, indicators, latest_sentiment, insider_trades,
-            has_open_report_soon=False,
+            has_open_report_soon=has_report_soon,
+            relative_strength=rs,
         )
 
-        if buy_score < SIGNAL_THRESHOLD:
+        if buy_score < _settings.get_int("signal_threshold"):
             return
 
         # Positions full — check if rotation is warranted
-        if len(open_positions) >= MAX_POSITIONS:
+        if len(open_positions) >= _settings.get_int("max_positions"):
             # Score all open positions and find the weakest
             weakest_ticker = None
             weakest_sell_score = -1
             for pos_ticker, pos in open_positions.items():
-                pos_sell_score, _ = score_sell_signal(pos_ticker, indicators, pos, latest_sentiment)
+                pos_sell_score, _ = score_sell_signal(pos_ticker, indicators, pos, latest_sentiment, relative_strength=None)
                 if pos_sell_score > weakest_sell_score:
                     weakest_sell_score = pos_sell_score
                     weakest_ticker = pos_ticker

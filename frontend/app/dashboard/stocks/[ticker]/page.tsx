@@ -38,7 +38,7 @@ export default async function StockDetailPage({
 }) {
   const { ticker: rawTicker } = await params;
   const { tab: rawTab } = await searchParams;
-  const ticker = rawTicker.toUpperCase();
+  const ticker = decodeURIComponent(rawTicker).toUpperCase();
   const activeTab: Tab = (TABS.includes(rawTab as Tab) ? rawTab : "indikatorer") as Tab;
 
   // Always fetch live indicators
@@ -79,6 +79,14 @@ export default async function StockDetailPage({
             </Link>
             <span className="text-gray-700">/</span>
             <h1 className="text-xl font-bold">{ticker}</h1>
+            <a
+              href={`https://www.avanza.se/search/#searchQuery=${encodeURIComponent(ticker)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full hover:bg-blue-500/20 transition"
+            >
+              Avanza ↗
+            </a>
           </div>
           {price && (
             <p className="text-3xl font-bold mt-1">{price.toFixed(2)} kr</p>
@@ -90,7 +98,7 @@ export default async function StockDetailPage({
               ? "bg-green-500/15 text-green-400 border-green-500/30"
               : "bg-gray-800 text-gray-400 border-gray-700"
           }`}>
-            Kopsignal: {live.buy_score}p {live.buy_score >= 60 ? "— AKTIV" : "/ 60p"}
+            Köpsignal: {live.buy_score}p {live.buy_score >= 60 ? "— AKTIV" : "/ 60p"}
           </div>
         )}
       </div>
@@ -143,7 +151,7 @@ export default async function StockDetailPage({
 
               {live?.buy_reasons?.length > 0 && (
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-3">Aktiva kopsignals-kriterier</p>
+                  <p className="text-xs text-gray-500 mb-3">Aktiva köpsignals-kriterier</p>
                   <div className="flex flex-wrap gap-2">
                     {live.buy_reasons.map((r: string, i: number) => (
                       <span key={i} className="text-xs bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded-full border border-blue-500/20">
@@ -171,7 +179,7 @@ export default async function StockDetailPage({
       {activeTab === "signaler" && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           {signals.length === 0 ? (
-            <p className="p-6 text-gray-500 text-sm">Inga signaler for {ticker} an.</p>
+            <p className="p-6 text-gray-500 text-sm">Inga signaler för {ticker} än.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -193,7 +201,7 @@ export default async function StockDetailPage({
                     </td>
                     <td className="p-4">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.signal_type === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-                        {s.signal_type === "BUY" ? "KOP" : "SALJ"}
+                        {s.signal_type === "BUY" ? "KÖP" : "SÄLJ"}
                       </span>
                     </td>
                     <td className="p-4">{s.price?.toFixed(2)} kr</td>
@@ -224,7 +232,7 @@ export default async function StockDetailPage({
       {activeTab === "nyheter" && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
           {news.length === 0 ? (
-            <p className="p-6 text-gray-500 text-sm">Inga nyheter inhamtade for {ticker} an.</p>
+            <p className="p-6 text-gray-500 text-sm">Inga nyheter inhämtade för {ticker} än.</p>
           ) : (
             (news as any[]).map((item) => (
               <div key={item.id} className="p-4 flex items-start gap-3 hover:bg-gray-800/30 transition">
@@ -257,7 +265,7 @@ export default async function StockDetailPage({
       {activeTab === "notiser" && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
           {notifications.length === 0 ? (
-            <p className="p-6 text-gray-500 text-sm">Inga notiser skickade for {ticker} an.</p>
+            <p className="p-6 text-gray-500 text-sm">Inga notiser skickade för {ticker} än.</p>
           ) : (
             (notifications as any[]).map((n) => (
               <div key={n.id} className="p-4 flex gap-3 hover:bg-gray-800/30 transition">

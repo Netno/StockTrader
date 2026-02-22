@@ -56,7 +56,7 @@ export default function PaperTradingBanner() {
       await fetch(`${API}/api/deposits`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, note: depositNote || "Insattning" }),
+        body: JSON.stringify({ amount, note: depositNote || "Insättning" }),
       });
       setShowDeposit(false);
       setDepositAmount("");
@@ -132,7 +132,7 @@ export default function PaperTradingBanner() {
           onClick={() => setShowDeposit(true)}
           className="text-xs text-gray-500 hover:text-white border border-gray-700 hover:border-gray-500 rounded px-2 py-1 transition shrink-0"
         >
-          + Insattning
+          + Insättning
         </button>
       </div>
 
@@ -143,9 +143,9 @@ export default function PaperTradingBanner() {
           onClick={(e) => { if (e.target === e.currentTarget) setShowDeposit(false); }}
         >
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-80 space-y-4 shadow-2xl">
-            <h3 className="font-semibold text-white">Registrera insattning</h3>
+            <h3 className="font-semibold text-white">Registrera insättning</h3>
             <p className="text-xs text-gray-500">
-              Belopp du sattar in i papportfoljon. Paverkar disponibelt kapital.
+              Belopp du sätter in i pappersportföljen. Påverkar disponibelt kapital.
             </p>
             <div className="space-y-3">
               <div>

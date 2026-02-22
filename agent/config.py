@@ -23,7 +23,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
 
 # App settings
 PAPER_TRADING = os.getenv("PAPER_TRADING", "true").lower() == "true"
-PAPER_BALANCE = float(os.getenv("PAPER_BALANCE", "10000"))
+PAPER_BALANCE = float(os.getenv("PAPER_BALANCE", "0"))
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "3"))
 MAX_POSITION_SIZE = float(os.getenv("MAX_POSITION_SIZE", "2500"))
 

@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Optional
 import httpx
 import pandas as pd
 
@@ -52,6 +53,32 @@ async def get_price_history(ticker: str, days: int = 220) -> pd.DataFrame:
 
     _set_cache(cache_key, df, _HISTORY_TTL)
     return df
+
+
+async def get_index_history(days: int = 220) -> pd.DataFrame:
+    """Fetch OMXS30 index history via Vercel proxy (cached)."""
+    return await get_price_history("OMXS30", days)
+
+
+async def get_earnings_date(ticker: str) -> Optional[str]:
+    """Get next earnings date via Vercel proxy. Returns ISO date string or None. 24h cache."""
+    cache_key = f"earnings:{ticker}"
+    cached = _get_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    url = f"{FRONTEND_URL}/api/market/{ticker}?type=earnings"
+    date_str = None
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(url)
+        data = resp.json()
+        date_str = data.get("earnings_date")
+    except Exception:
+        pass
+
+    _set_cache(cache_key, date_str, 86400)  # 24h
+    return date_str
 
 
 async def get_current_price(ticker: str) -> dict:

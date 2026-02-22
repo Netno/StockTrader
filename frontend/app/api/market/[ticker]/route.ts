@@ -74,6 +74,7 @@ const YAHOO_SYMBOLS: Record<string, string> = {
   'RATO B':   'RATO-B.ST',
   'VBG B':    'VBG-B.ST',
   'ADDT B':   'ADDT-B.ST',
+  'OMXS30':   '^OMX',
 }
 
 const HEADERS = {
@@ -92,6 +93,26 @@ export async function GET(
   const type = req.nextUrl.searchParams.get('type') ?? 'price'
 
   try {
+    // Earnings calendar — uses a different Yahoo endpoint
+    if (type === 'earnings') {
+      const summaryUrl = `https://query1.finance.yahoo.com/v11/finance/quoteSummary/${symbol}?modules=calendarEvents`
+      const summaryResp = await fetch(summaryUrl, { headers: HEADERS })
+      const summaryJson = await summaryResp.json()
+
+      const earningsDates: any[] =
+        summaryJson?.quoteSummary?.result?.[0]?.calendarEvents?.earnings?.earningsDate ?? []
+
+      const nowSec = Date.now() / 1000
+      const upcoming = earningsDates.filter((d) => d.raw >= nowSec)
+      const chosen = upcoming[0] ?? null
+
+      return NextResponse.json({
+        earnings_date: chosen
+          ? new Date(chosen.raw * 1000).toISOString().split('T')[0]
+          : null,
+      })
+    }
+
     const range = type === 'history' ? '1y' : '1d'
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`
     const resp = await fetch(url, { headers: HEADERS })

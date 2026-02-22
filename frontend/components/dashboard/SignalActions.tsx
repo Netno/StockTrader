@@ -12,7 +12,7 @@ const statusBadge: Record<string, string> = {
 };
 
 const statusLabel: Record<string, string> = {
-  confirmed: "Bekraftad",
+  confirmed: "Bekräftad",
   rejected:  "Nekad",
   auto:      "Auto",
 };
@@ -56,11 +56,11 @@ export default function SignalActions({
       if (data.error) {
         setError(data.error);
       } else {
-        setDone(action === "confirm" ? "Kopt!" : "Nekad");
+        setDone(action === "confirm" ? "Köpt!" : "Nekad");
         router.refresh();
       }
     } catch {
-      setError("Natverksfel");
+      setError("Nätverksfel");
     }
     setLoading(false);
   };
@@ -73,7 +73,7 @@ export default function SignalActions({
         onClick={() => act("confirm")}
         className="px-3 py-1 text-xs rounded-lg bg-green-600 hover:bg-green-500 text-white disabled:opacity-50 transition font-medium"
       >
-        {loading ? "..." : "Bekrafta kop"}
+        {loading ? "..." : "Bekräfta köp"}
       </button>
       <button
         disabled={loading}

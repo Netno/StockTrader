@@ -30,10 +30,15 @@ export const api = {
   portfolio:      () => get<any[]>("/api/portfolio"),
   indicators:     (ticker: string) => get<any>(`/api/indicators/${ticker}`),
   suggestions:    () => get<any[]>("/api/suggestions"),
+  summary:        () => get<any>("/api/summary"),
   testTicker:     (ticker: string) => get<any>(`/api/test/${ticker}`, 60),
   trades:         (status?: string) =>
     get<any[]>(`/api/trades${status ? `?status=${status}` : ""}`),
   confirmSignal:  (id: string) => post<any>(`/api/signals/${id}/confirm`),
   rejectSignal:   (id: string) => post<any>(`/api/signals/${id}/reject`),
   closeTrade:     (id: string) => post<any>(`/api/trades/${id}/close`),
+  deposit:        (amount: number, note?: string) => post<any>("/api/deposits", { amount, note }),
+  reset:          () => post<any>("/api/reset"),
+  getSettings:    () => get<any>("/api/settings"),
+  saveSettings:   (body: Record<string, string>) => post<any>("/api/settings", body),
 };

@@ -318,8 +318,15 @@ async def run_scan():
             title="Watchlist uppdaterad",
             priority="default",
             tags=["bar_chart"],
+            notif_type="scan_suggestion",
         )
     else:
-        logger.info("Inga byten – nuvarande watchlist ar fortsatt optimal.")
+        await ntfy._send(
+            "Nuvarande watchlist är fortsatt optimal – inga byten gjordes.",
+            title="Watchlist-skanning klar",
+            priority="min",
+            tags=["bar_chart"],
+            notif_type="scan_suggestion",
+        )
 
-    logger.info(f"Skanning klar. {len(results)} aktier analyserade, {len(suggestions)} förslag.")
+    logger.info(f"Skanning klar. {len(results)} aktier analyserade, {len(replaced)} byten.")

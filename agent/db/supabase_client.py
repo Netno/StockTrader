@@ -218,7 +218,7 @@ async def get_total_deposited() -> float:
         result = get_client().table("stock_deposits").select("amount").execute()
         return sum(r["amount"] for r in (result.data or []))
     except Exception:
-        return PAPER_BALANCE
+        return 0.0
 
 
 async def add_deposit(amount: float, note: str = "") -> str | None:

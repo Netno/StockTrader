@@ -1,6 +1,7 @@
 from typing import Optional
-from config import TICKERS, MAX_POSITION_SIZE
+from config import TICKERS
 from data.insider_fetcher import has_significant_insider_buy
+import settings as _settings
 
 
 def score_buy_signal(
@@ -9,6 +10,7 @@ def score_buy_signal(
     news_sentiment: Optional[dict] = None,
     insider_trades: Optional[list] = None,
     has_open_report_soon: bool = False,
+    relative_strength: Optional[float] = None,
 ) -> tuple[int, list[str]]:
     """
     Calculate buy signal score.
@@ -77,6 +79,18 @@ def score_buy_signal(
         score -= 20
         reasons.append("⚠️ Rapport inom 48h (penalty -20p)")
 
+    # Relative strength vs OMXS30 (20-day)
+    if relative_strength is not None:
+        if relative_strength >= 1.15:
+            score += 20
+            reasons.append(f"RS vs OMXS30: +{(relative_strength - 1) * 100:.0f}% (stark outperformance)")
+        elif relative_strength >= 1.05:
+            score += 10
+            reasons.append(f"RS vs OMXS30: +{(relative_strength - 1) * 100:.0f}% (outperformance)")
+        elif relative_strength < 0.90:
+            score -= 10
+            reasons.append(f"RS vs OMXS30: {(relative_strength - 1) * 100:.0f}% (underperformance, -10p)")
+
     return score, reasons
 
 
@@ -85,6 +99,7 @@ def score_sell_signal(
     indicators: dict,
     position: dict,
     news_sentiment: Optional[dict] = None,
+    relative_strength: Optional[float] = None,
 ) -> tuple[int, list[str]]:
     """
     Calculate sell signal score.
@@ -136,17 +151,23 @@ def score_sell_signal(
         score += 20
         reasons.append(f"Pris under MA50 ({ma50:.2f})")
 
+    # Relative strength vs OMXS30 — persistent underperformance → sell
+    if relative_strength is not None and relative_strength < 0.90:
+        score += 15
+        reasons.append(f"RS vs OMXS30: {(relative_strength - 1) * 100:.0f}% (underperformance)")
+
     return score, reasons
 
 
-def calculate_position_size(confidence_pct: float, max_size: float = MAX_POSITION_SIZE) -> float:
+def calculate_position_size(confidence_pct: float) -> float:
     """Return position size in SEK based on confidence level."""
+    max_size = _settings.get_float("max_position_size")
     if confidence_pct >= 75:
-        return max_size          # 2 500 kr
+        return max_size          # full storlek
     elif confidence_pct >= 60:
-        return max_size * 0.72   # ~1 800 kr
+        return max_size * 0.72   # ~72%
     else:
-        return max_size * 0.40   # 1 000 kr
+        return max_size * 0.40   # ~40%
 
 
 def calculate_stop_take(ticker: str, price: float, indicators: dict) -> tuple[float, float]:

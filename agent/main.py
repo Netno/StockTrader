@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Startar AKTIEMOTOR...")
+    import settings
+    await settings.load()
     sched = setup_scheduler()
     sched.start()
     await load_open_positions()
@@ -173,7 +175,7 @@ async def confirm_signal(signal_id: str):
     """User confirms a pending BUY signal — creates a live trade."""
     from db.supabase_client import get_client, confirm_signal as db_confirm, save_trade
     from scheduler import open_positions
-    from config import MAX_POSITIONS
+    import settings as _settings
 
     result = get_client().table("stock_signals").select("*").eq("id", signal_id).execute()
     if not result.data:
@@ -187,8 +189,9 @@ async def confirm_signal(signal_id: str):
         return {"error": f"Signalen ar redan {signal['status']}"}
     if signal["ticker"] in open_positions:
         return {"error": f"Har redan en oppna position i {signal['ticker']}"}
-    if len(open_positions) >= MAX_POSITIONS:
-        return {"error": f"Max antal positioner ({MAX_POSITIONS}) uppnatt"}
+    max_pos = _settings.get_int("max_positions")
+    if len(open_positions) >= max_pos:
+        return {"error": f"Max antal positioner ({max_pos}) uppnått"}
 
     trade_id = await save_trade(
         ticker=signal["ticker"],
@@ -416,6 +419,53 @@ async def reject_suggestion(suggestion_id: str):
     from db.supabase_client import get_client
     get_client().table("stock_suggestions").update({"status": "rejected"}).eq("id", suggestion_id).execute()
     return {"ok": True}
+
+
+@app.get("/api/settings")
+async def get_settings():
+    import settings
+    return {
+        "settings": settings.all_settings(),
+        "descriptions": {
+            "max_positions":     "Max antal öppna positioner samtidigt",
+            "max_position_size": "Max investerat belopp per position (kr)",
+            "signal_threshold":  "Minimumscore (0–100) för att skicka köp/säljsignal",
+        },
+    }
+
+
+@app.post("/api/settings")
+async def update_settings(body: dict):
+    import settings
+    allowed = {"max_positions", "max_position_size", "signal_threshold"}
+    updated = {}
+    for key, value in body.items():
+        if key not in allowed:
+            continue
+        try:
+            float(value)  # validate numeric
+        except (TypeError, ValueError):
+            return {"error": f"Ogiltigt värde för {key}: {value}"}
+        await settings.save(key, str(value))
+        updated[key] = str(value)
+    return {"ok": True, "updated": updated}
+
+
+@app.post("/api/reset")
+async def reset_all():
+    """Clear all trades, signals, and deposits. Use before making a fresh deposit."""
+    from db.supabase_client import get_client
+    from scheduler import open_positions
+
+    db = get_client()
+    db.table("stock_trades").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    db.table("stock_signals").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    db.table("stock_deposits").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    db.table("stock_notifications").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+
+    open_positions.clear()
+
+    return {"ok": True, "message": "Allt nollställt. Gör en ny insättning för att starta."}
 
 
 @app.post("/api/scan")

@@ -25,11 +25,11 @@ export default async function SignalsPage() {
           <p className="text-2xl font-bold">{signals.length}</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
-          <p className="text-gray-500 mb-1">Kopsignaler</p>
+          <p className="text-gray-500 mb-1">Köpsignaler</p>
           <p className="text-2xl font-bold text-green-400">{buys.length}</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
-          <p className="text-gray-500 mb-1">Saljsignaler</p>
+          <p className="text-gray-500 mb-1">Säljsignaler</p>
           <p className="text-2xl font-bold text-red-400">{sells.length}</p>
         </div>
       </div>
@@ -38,7 +38,7 @@ export default async function SignalsPage() {
       {pending.length > 0 && (
         <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-5 space-y-4">
           <p className="text-sm font-semibold text-amber-400">
-            {pending.length} signal{pending.length > 1 ? "er" : ""} vantar pa bekraftelse
+            {pending.length} signal{pending.length > 1 ? "er" : ""} väntar på bekräftelse
           </p>
           {pending.map((s: any) => (
             <div
@@ -55,7 +55,7 @@ export default async function SignalsPage() {
                       {s.ticker}
                     </Link>
                     <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-semibold">
-                      KOP
+                      KÖP
                     </span>
                     <span className="text-xs text-gray-500">
                       {new Date(s.created_at).toLocaleString("sv-SE", {
@@ -129,7 +129,7 @@ export default async function SignalsPage() {
             {signals.length === 0 && (
               <tr>
                 <td colSpan={8} className="p-6 text-center text-gray-500">
-                  Inga signaler an.
+                  Inga signaler än.
                 </td>
               </tr>
             )}
@@ -151,7 +151,7 @@ export default async function SignalsPage() {
                       ? "bg-green-500/20 text-green-400"
                       : "bg-red-500/20 text-red-400"
                   }`}>
-                    {s.signal_type === "BUY" ? "KOP" : "SALJ"}
+                    {s.signal_type === "BUY" ? "KÖP" : "SÄLJ"}
                   </span>
                 </td>
                 <td className="p-4">{s.price?.toFixed(2)} kr</td>
@@ -174,7 +174,7 @@ export default async function SignalsPage() {
                     <SignalActions signalId={s.id} status={s.status ?? "pending"} />
                   ) : (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
-                      Salj pa Avanza
+                      Sälj på Avanza
                     </span>
                   )}
                 </td>

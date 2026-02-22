@@ -75,7 +75,7 @@ export default async function StocksPage() {
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 {/* Left: name + strategy */}
                 <div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <Link
                       href={`/dashboard/stocks/${stock.ticker}`}
                       className="text-lg font-bold hover:text-blue-400 transition"
@@ -86,6 +86,14 @@ export default async function StocksPage() {
                     <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
                       {strategyLabel[stock.strategy] ?? stock.strategy}
                     </span>
+                    <a
+                      href={`https://www.avanza.se/search/#searchQuery=${encodeURIComponent(stock.name ?? stock.ticker)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full hover:bg-blue-500/20 transition"
+                    >
+                      Avanza ↗
+                    </a>
                   </div>
                   {live?.error && (
                     <p className="text-red-400 text-xs mt-1">{live.error}</p>

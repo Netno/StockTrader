@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import StatCard from "@/components/dashboard/StatCard";
 import SignalActions from "@/components/dashboard/SignalActions";
 import TradeClose from "@/components/dashboard/TradeClose";
+import DepositButton from "@/components/dashboard/DepositButton";
 import Link from "next/link";
 
 export const revalidate = 15;
@@ -10,7 +11,7 @@ export const revalidate = 15;
 const notifIcon: Record<string, string> = {
   morning_summary: "☀",
   evening_summary: "☾",
-  scan_suggestion: "↕",
+  scan_suggestion: "⟳",
   info:            "i",
 };
 
@@ -32,7 +33,7 @@ export default async function DashboardPage() {
       .select("*")
       .is("ticker", null)
       .order("created_at", { ascending: false })
-      .limit(8)
+      .limit(15)
       .then((r) => r.data ?? []),
   ]);
 
@@ -62,12 +63,12 @@ export default async function DashboardPage() {
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Tillganglig kassa"
+          label="Tillgänglig kassa"
           value={`${(summaryData?.available_cash ?? 0).toFixed(0)} kr`}
           sub={`av ${(summaryData?.total_deposited ?? 0).toFixed(0)} kr insatt`}
         />
         <StatCard label="Investerat" value={`${invested.toFixed(0)} kr`} sub={`${openCount} position${openCount !== 1 ? "er" : ""}`} />
-        <StatCard label="Avslutade affarer" value={String(totalTrades)} />
+        <StatCard label="Avslutade affärer" value={String(totalTrades)} />
         <StatCard
           label="Totalt P&L"
           value={`${totalPnlKr >= 0 ? "+" : ""}${totalPnlKr.toFixed(0)} kr`}
@@ -77,12 +78,28 @@ export default async function DashboardPage() {
         />
       </div>
 
+      {/* Capital management */}
+      {(summaryData?.total_deposited ?? 0) === 0 ? (
+        <div className="bg-blue-500/5 border border-blue-500/30 rounded-xl p-4">
+          <p className="text-sm text-blue-400 font-semibold mb-3">Ingen insättning gjord än — sätt in kapital för att starta</p>
+          <div className="max-w-xs">
+            <DepositButton />
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-end">
+          <div className="w-48">
+            <DepositButton />
+          </div>
+        </div>
+      )}
+
       {/* Pending signals banner */}
       {pendingSignals.length > 0 && (
         <div className="bg-amber-500/5 border border-amber-500/30 rounded-xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-amber-400">
-              {pendingSignals.length} kopsignal{pendingSignals.length > 1 ? "er" : ""} vantar pa bekraftelse
+              {pendingSignals.length} köpsignal{pendingSignals.length > 1 ? "er" : ""} väntar på bekräftelse
             </p>
             <Link href="/dashboard/signals" className="text-xs text-amber-400/70 hover:text-amber-300 transition">
               Se alla signaler →
@@ -129,11 +146,11 @@ export default async function DashboardPage() {
         {/* Open positions */}
         <div className="xl:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-gray-300">Oppna positioner</h2>
+            <h2 className="text-sm font-semibold text-gray-300">Öppna positioner</h2>
           </div>
           {openCount === 0 ? (
             <p className="text-gray-600 text-sm">
-              Inga oppna positioner. Kopsignaler dyker upp har nar agenten hittar mojligheter.
+              Inga öppna positioner. Köpsignaler dyker upp här när agenten hittar möjligheter.
             </p>
           ) : (
             <div className="space-y-3">
@@ -148,7 +165,7 @@ export default async function DashboardPage() {
                             {ticker}
                           </Link>
                           <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
-                            Oppet
+                            Öppet
                           </span>
                         </div>
                         <p className="text-sm text-gray-300">
@@ -183,10 +200,10 @@ export default async function DashboardPage() {
 
         {/* Portfolio notifications */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-300 mb-4">Portfoljnotiser</h2>
+          <h2 className="text-sm font-semibold text-gray-300 mb-4">Portföljnotiser</h2>
           {notifData.length === 0 ? (
             <p className="text-gray-600 text-sm">
-              Inga notiser an. Morgon- och kvallssummeringar dyker upp har.
+              Inga notiser än. Morgon- och kvällssummeringar dyker upp här.
             </p>
           ) : (
             <div className="space-y-3">

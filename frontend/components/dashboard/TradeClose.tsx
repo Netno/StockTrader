@@ -13,7 +13,7 @@ export default function TradeClose({ tradeId }: { tradeId: string }) {
   if (result) return <span className="text-xs text-gray-400">{result}</span>;
 
   const close = async () => {
-    if (!confirm("Stang positionen till aktuellt marknadspris?")) return;
+    if (!confirm("Stäng positionen till aktuellt marknadspris?")) return;
     setLoading(true);
     try {
       const res = await fetch(`${API}/api/trades/${tradeId}/close`, { method: "POST" });
@@ -21,11 +21,11 @@ export default function TradeClose({ tradeId }: { tradeId: string }) {
       if (data.error) {
         setResult(`Fel: ${data.error}`);
       } else {
-        setResult(`Stangd ${data.exit_price?.toFixed(2)} kr (${data.pnl_pct >= 0 ? "+" : ""}${data.pnl_pct?.toFixed(1)}%)`);
+        setResult(`Stängd ${data.exit_price?.toFixed(2)} kr (${data.pnl_pct >= 0 ? "+" : ""}${data.pnl_pct?.toFixed(1)}%)`);
         router.refresh();
       }
     } catch {
-      setResult("Natverksfel");
+      setResult("Nätverksfel");
     }
     setLoading(false);
   };
@@ -36,7 +36,7 @@ export default function TradeClose({ tradeId }: { tradeId: string }) {
       onClick={close}
       className="px-2 py-1 text-xs rounded-lg bg-gray-700 hover:bg-red-900/50 hover:text-red-300 text-gray-400 disabled:opacity-50 transition"
     >
-      {loading ? "..." : "Stang"}
+      {loading ? "..." : "Stäng"}
     </button>
   );
 }
