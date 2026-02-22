@@ -189,40 +189,74 @@ async def process_ticker(ticker: str):
 
     # 4b. BUY logic — generates a PENDING signal; user must confirm via dashboard
     else:
-        if len(open_positions) >= MAX_POSITIONS:
-            return
-
         buy_score, buy_reasons = score_buy_signal(
             ticker, indicators, latest_sentiment, insider_trades,
             has_open_report_soon=False,
         )
 
-        if buy_score >= SIGNAL_THRESHOLD:
-            confidence = min(99.0, float(buy_score))
-            position_value = calculate_position_size(confidence)
-            quantity = int(position_value / price) if price > 0 else 0
+        if buy_score < SIGNAL_THRESHOLD:
+            return
 
-            if quantity < 1:
-                logger.info(f"{ticker}: for lat pris for en hel aktie.")
-                return
+        # Positions full — check if rotation is warranted
+        if len(open_positions) >= MAX_POSITIONS:
+            # Score all open positions and find the weakest
+            weakest_ticker = None
+            weakest_sell_score = -1
+            for pos_ticker, pos in open_positions.items():
+                pos_sell_score, _ = score_sell_signal(pos_ticker, indicators, pos, latest_sentiment)
+                if pos_sell_score > weakest_sell_score:
+                    weakest_sell_score = pos_sell_score
+                    weakest_ticker = pos_ticker
 
-            stop_loss, take_profit = calculate_stop_take(ticker, price, indicators)
+            # Only rotate if new candidate is significantly better than weakest position
+            if weakest_ticker and buy_score > weakest_sell_score + 15:
+                pos = open_positions[weakest_ticker]
+                pos_price = pos["price"]
+                pos_qty = pos["quantity"]
+                rotation_reasons = [
+                    f"Rotation: {ticker} ({buy_score}p) ar battre an {weakest_ticker} ({weakest_sell_score}p)",
+                    f"Salj {weakest_ticker} pa Avanza for att frigora kapital",
+                ]
+                await db.save_signal(
+                    weakest_ticker, "SELL", pos_price, pos_qty, float(weakest_sell_score),
+                    weakest_sell_score, rotation_reasons, indicators, 0.0, 0.0,
+                )
+                await ntfy.send_sell_signal(
+                    weakest_ticker, TICKERS.get(weakest_ticker, {}).get("name", weakest_ticker),
+                    pos_price, pos_qty, 0.0, 0.0, rotation_reasons, float(weakest_sell_score),
+                )
+                logger.info(
+                    f"ROTATION: Salj {weakest_ticker} for att kopa {ticker} | "
+                    f"ny score={buy_score} > gammal score={weakest_sell_score}"
+                )
+            else:
+                logger.debug(f"{ticker}: max positioner natt, ingen rotation motiverad.")
+            return
 
-            await db.save_signal(
-                ticker, "BUY", price, quantity, confidence, buy_score,
-                buy_reasons, indicators, stop_loss, take_profit,
-            )
-            # No auto-execution — user confirms via dashboard
-            await ntfy.send_buy_signal(
-                ticker, company, price, quantity,
-                price * quantity, buy_reasons, stop_loss, take_profit, confidence,
-            )
+        confidence = min(99.0, float(buy_score))
+        position_value = calculate_position_size(confidence)
+        quantity = int(position_value / price) if price > 0 else 0
 
-            daily_signals += 1
-            logger.info(
-                f"KOP-SIGNAL {ticker} | score={buy_score} | qty={quantity} | "
-                f"SL={stop_loss} | TP={take_profit} | VANTAR BEKRAFTELSE"
-            )
+        if quantity < 1:
+            logger.info(f"{ticker}: for hogt pris for en hel aktie.")
+            return
+
+        stop_loss, take_profit = calculate_stop_take(ticker, price, indicators)
+
+        await db.save_signal(
+            ticker, "BUY", price, quantity, confidence, buy_score,
+            buy_reasons, indicators, stop_loss, take_profit,
+        )
+        await ntfy.send_buy_signal(
+            ticker, company, price, quantity,
+            price * quantity, buy_reasons, stop_loss, take_profit, confidence,
+        )
+
+        daily_signals += 1
+        logger.info(
+            f"KOP-SIGNAL {ticker} | score={buy_score} | qty={quantity} | "
+            f"SL={stop_loss} | TP={take_profit} | VANTAR BEKRAFTELSE"
+        )
 
 
 async def evening_summary():
