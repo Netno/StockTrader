@@ -6,9 +6,15 @@ from config import GEMINI_API_KEY, GEMINI_MODEL
 
 _client = genai.Client(api_key=GEMINI_API_KEY)
 
+# Cache: headline -> sentiment result (lives for the lifetime of the process)
+_sentiment_cache: dict[str, dict] = {}
+
 
 async def analyze_sentiment(ticker: str, headline: str) -> dict:
     """Send a news headline to Gemini for short-term sentiment analysis."""
+    if headline in _sentiment_cache:
+        return _sentiment_cache[headline]
+
     prompt = (
         f"Du är en aktieanalytiker. Analysera denna nyhet om {ticker}.\n"
         f"Är den positiv, negativ eller neutral för aktiekursen på kort sikt (1-5 dagar)?\n"
@@ -28,11 +34,13 @@ async def analyze_sentiment(ticker: str, headline: str) -> dict:
         json_match = re.search(r"\{.*\}", text, re.DOTALL)
         if json_match:
             result = json.loads(json_match.group())
-            return {
+            sentiment = {
                 "sentiment": result.get("sentiment", "NEUTRAL").upper(),
                 "score": float(result.get("score", 0.0)),
                 "reason": result.get("reason", ""),
             }
+            _sentiment_cache[headline] = sentiment
+            return sentiment
     except Exception as e:
         print(f"Gemini error for {ticker}: {e}")
 
