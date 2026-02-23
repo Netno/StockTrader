@@ -18,7 +18,8 @@ export default function AnalyzeButton({ ticker }: { ticker: string }) {
         method: "POST",
         cache: "no-store",
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
       setDone(true);
       setTimeout(() => window.location.reload(), 8000);
     } catch (e: any) {
