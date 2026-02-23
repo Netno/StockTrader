@@ -498,8 +498,6 @@ async def trigger_trading_loop():
 @app.post("/api/run/{ticker}")
 async def trigger_single_ticker(ticker: str, background_tasks: BackgroundTasks):
     """Manually run process_ticker for a single ticker (full DB writes + signal generation)."""
-    if not _is_trading_hours():
-        return {"ok": False, "message": "Utanför handelstid (mån–fre 09:00–17:30). Inget körs."}
     from scheduler import process_ticker
     from db.supabase_client import get_watchlist
     ticker = ticker.upper()
