@@ -39,6 +39,8 @@ def score_buy_signal(
     elif market_regime == "NEUTRAL":
         score -= 10
         reasons.append("Marknadsregim: NEUTRAL -10p")
+    elif market_regime in ("BULL", "BULL_EARLY"):
+        pass  # Ingen penalty i upptrend
 
     # RSI < 35 → +25p om pris över MA200 (upptrend), annars +10p
     if rsi is not None and rsi < 35:

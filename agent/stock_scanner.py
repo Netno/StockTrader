@@ -293,8 +293,8 @@ async def run_scan():
         if not yahoo_symbol:
             continue
         try:
-            # 120 dagar för mer tillförlitliga genomsnitt och trendanalyser
-            df = await get_price_history(ticker, days=120)
+            # 220 dagar för att MA200 ska beräknas korrekt
+            df = await get_price_history(ticker, days=220)
             if df.empty or len(df) < MIN_HISTORY_DAYS:
                 continue
             indicators = calculate_indicators(df)

@@ -1,19 +1,22 @@
 import json
 import re
+import time
 from google import genai
 from google.genai import types
 from config import GEMINI_API_KEY, GEMINI_MODEL
 
 _client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Cache: headline -> sentiment result (lives for the lifetime of the process)
-_sentiment_cache: dict[str, dict] = {}
+# Cache: headline -> (result, expires_at) — 6 timmars TTL
+_sentiment_cache: dict[str, tuple] = {}
+_SENTIMENT_TTL = 6 * 3600  # 6 timmar
 
 
 async def analyze_sentiment(ticker: str, headline: str) -> dict:
     """Send a news headline to Gemini for short-term sentiment analysis."""
-    if headline in _sentiment_cache:
-        return _sentiment_cache[headline]
+    entry = _sentiment_cache.get(headline)
+    if entry and time.monotonic() < entry[1]:
+        return entry[0]
 
     prompt = (
         f"Du är en aktieanalytiker. Analysera denna nyhet om {ticker}.\n"
@@ -39,7 +42,7 @@ async def analyze_sentiment(ticker: str, headline: str) -> dict:
                 "score": float(result.get("score", 0.0)),
                 "reason": result.get("reason", ""),
             }
-            _sentiment_cache[headline] = sentiment
+            _sentiment_cache[headline] = (sentiment, time.monotonic() + _SENTIMENT_TTL)
             return sentiment
     except Exception as e:
         print(f"Gemini error for {ticker}: {e}")

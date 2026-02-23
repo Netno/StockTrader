@@ -31,7 +31,7 @@ async def get_price_history(ticker: str, days: int = 220) -> pd.DataFrame:
     if cached is not None:
         return cached
 
-    url = f"{FRONTEND_URL}/api/market/{ticker}?type=history"
+    url = f"{FRONTEND_URL}/api/market/{ticker}?type=history&days={days}"
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url)
 

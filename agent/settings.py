@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 _DEFAULTS = {
     "max_positions":    str(_MAX_POSITIONS),
     "max_position_size": str(_MAX_POSITION_SIZE),
-    "signal_threshold": str(_SIGNAL_THRESHOLD),
+    "signal_threshold": str(_SIGNAL_THRESHOLD),  # köptröskel
+    "sell_threshold":   "55",                     # säljtröskel (lägre = lättare att sälja)
 }
 
 _cache: dict[str, str] = dict(_DEFAULTS)

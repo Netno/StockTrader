@@ -39,6 +39,7 @@ async def send_sell_signal(
     profit_sek: float,
     reasons: list,
     confidence: float,
+    notif_subtype: str = "sell_signal",
 ):
     mode = "PAPER " if PAPER_TRADING else ""
     emoji = ":tada:" if profit_sek > 0 else ":chart_decreasing:"
@@ -52,7 +53,7 @@ async def send_sell_signal(
     )
     dashboard_url = f"{FRONTEND_URL}/dashboard" if FRONTEND_URL else None
     await _send(message, title=f"SALJ {ticker}", priority="high",
-                tags=["chart_with_downwards_trend"], notif_type="sell_signal", ticker=ticker,
+                tags=["chart_with_downwards_trend"], notif_type=notif_subtype, ticker=ticker,
                 click_url=dashboard_url)
 
 

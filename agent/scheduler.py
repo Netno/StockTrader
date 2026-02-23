@@ -130,27 +130,48 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
     if rs is not None:
         indicators["relative_strength"] = rs
 
-    # 3. News + sentiment
+    in_position = ticker in open_positions
+
+    # 3. Pre-score (tekniska indikatorer utan sentiment) — gate för Gemini-anrop
+    pre_buy_score, _ = score_buy_signal(
+        ticker, indicators, news_sentiment=None, insider_trades=None,
+        has_open_report_soon=False, relative_strength=rs, market_regime=market_regime,
+    )
+    pre_sell_score = 0
+    if in_position:
+        pre_sell_score, _ = score_sell_signal(
+            ticker, indicators, open_positions[ticker], news_sentiment=None, relative_strength=rs
+        )
+
+    # Hämta nyheter (cachas 30 min — billigt)
+    # Kör Gemini-sentimentanalys BARA om teknisk signal redan är lovande
+    _SENTIMENT_GATE = 25  # poäng utan sentiment för att motivera Gemini-anrop
+    needs_sentiment = in_position or pre_buy_score >= _SENTIMENT_GATE or pre_sell_score >= _SENTIMENT_GATE
+
     news_list = await fetch_news(ticker, company)
     latest_sentiment = None
 
-    for item in news_list[:2]:
-        sentiment = await analyze_sentiment(ticker, item["headline"])
-        await db.save_news(
-            ticker=ticker,
-            headline=item["headline"],
-            url=item["url"],
-            sentiment=sentiment["sentiment"],
-            sentiment_score=sentiment["score"],
-            reason=sentiment["reason"],
-            source=item["source"],
-            published_at=item["published_at"],
-        )
-        if latest_sentiment is None:
-            latest_sentiment = sentiment
+    if needs_sentiment:
+        for item in news_list[:1]:  # max 1 Gemini-anrop per ticker per loop
+            sentiment = await analyze_sentiment(ticker, item["headline"])
+            await db.save_news(
+                ticker=ticker,
+                headline=item["headline"],
+                url=item["url"],
+                sentiment=sentiment["sentiment"],
+                sentiment_score=sentiment["score"],
+                reason=sentiment["reason"],
+                source=item["source"],
+                published_at=item["published_at"],
+            )
+            if latest_sentiment is None:
+                latest_sentiment = sentiment
+        logger.debug(f"{ticker}: sentimentanalys körd (pre_score buy={pre_buy_score} sell={pre_sell_score})")
+    else:
+        logger.debug(f"{ticker}: Gemini hoppas over (pre_score={pre_buy_score}p < {_SENTIMENT_GATE}p)")
 
     # 4. Insider data
-    insider_trades = await fetch_insider_trades(ticker)
+    insider_trades = await fetch_insider_trades(ticker, company_name=company)
 
     # 5. Earnings date — avoid buying within 48h of a report
     has_report_soon = False
@@ -164,8 +185,6 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 logger.info(f"{ticker}: rapport om {delta} dag(ar) — köp-penalty aktiv")
     except Exception as e:
         logger.debug(f"{ticker}: Kunde inte hämta rapportdatum: {e}")
-
-    in_position = ticker in open_positions
 
     # 4a. SELL / SL / TP logic
     if in_position:
@@ -190,8 +209,10 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             await db.save_signal(
                 ticker, "SELL", price, qty, 100.0, 100, reasons, indicators, 0.0, 0.0,
             )
+            notif_subtype = "sl_triggered" if hit_sl else "tp_triggered"
             await ntfy.send_sell_signal(
                 ticker, company, price, qty, pnl_pct, pnl_kr, reasons, 100.0,
+                notif_subtype=notif_subtype,
             )
 
             daily_signals += 1
@@ -205,7 +226,9 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 ticker, indicators, position, latest_sentiment, relative_strength=rs
             )
 
-            if sell_score >= _settings.get_int("signal_threshold"):
+            # Sell threshold — separate from buy, lowered further in BEAR market
+            effective_sell_threshold = _settings.get_int("sell_threshold") - (10 if market_regime == "BEAR" else 0)
+            if sell_score >= effective_sell_threshold:
                 confidence = min(99.0, float(sell_score))
                 sell_reasons.append("Salj pa Avanza och stang positionen i appen")
                 news_headline = news_list[0]["headline"] if news_list else ""
@@ -260,6 +283,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             # Score all open positions using their OWN indicators (not the new candidate's)
             weakest_ticker = None
             weakest_sell_score = -1
+            weakest_indicators = {}
             for pos_ticker, pos in open_positions.items():
                 try:
                     pos_df = await get_price_history(pos_ticker, days=220)
@@ -272,6 +296,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 if pos_sell_score > weakest_sell_score:
                     weakest_sell_score = pos_sell_score
                     weakest_ticker = pos_ticker
+                    weakest_indicators = pos_indicators
 
             # Only rotate if new candidate is significantly better than weakest position
             if weakest_ticker and buy_score > weakest_sell_score + 15:
@@ -284,7 +309,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 ]
                 await db.save_signal(
                     weakest_ticker, "SELL", pos_price, pos_qty, float(weakest_sell_score),
-                    weakest_sell_score, rotation_reasons, indicators, 0.0, 0.0,
+                    weakest_sell_score, rotation_reasons, weakest_indicators, 0.0, 0.0,
                 )
                 weakest_cfg = stock_config_map.get(weakest_ticker, {})
                 await ntfy.send_sell_signal(
@@ -355,10 +380,15 @@ def setup_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(morning_check, CronTrigger(day_of_week="mon-fri", hour=8, minute=30, timezone=tz))
     # 08:45 – Morgonsummering
     scheduler.add_job(morning_summary, CronTrigger(day_of_week="mon-fri", hour=8, minute=45, timezone=tz))
-    # 09:00–17:28 – Handelsloop var 2:a minut
+    # 09:00–16:58 – Handelsloop var 2:a minut
     scheduler.add_job(
         trading_loop,
-        CronTrigger(day_of_week="mon-fri", hour="9-17", minute="*/2", timezone=tz),
+        CronTrigger(day_of_week="mon-fri", hour="9-16", minute="*/2", timezone=tz),
+    )
+    # 17:00–17:28 – Handelsloop (sista 15 minuter, inte 17:30+)
+    scheduler.add_job(
+        trading_loop,
+        CronTrigger(day_of_week="mon-fri", hour=17, minute="0,2,4,6,8,10,12,14,16,18,20,22,24,26,28", timezone=tz),
     )
     # 17:35 – Kvallssummering
     scheduler.add_job(evening_summary, CronTrigger(day_of_week="mon-fri", hour=17, minute=35, timezone=tz))

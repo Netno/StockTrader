@@ -5,12 +5,15 @@ from typing import List, Dict
 FI_INSIDER_URL = "https://www.fi.se/sv/vara-register/insynshandel/GetInsynshandel/"
 
 
-async def fetch_insider_trades(ticker: str, days: int = 30) -> List[Dict]:
-    """Fetch insider trades from Finansinspektionen's open API."""
+async def fetch_insider_trades(ticker: str, company_name: str = None, days: int = 30) -> List[Dict]:
+    """Fetch insider trades from Finansinspektionen's open API.
+    FI's API searches by company name (e.g. 'Evolution AB'), not ticker symbol.
+    Pass company_name for accurate results; falls back to ticker if not provided.
+    """
     from_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
     params = {
-        "issuerName": ticker,
+        "issuerName": company_name or ticker,
         "fromTransactionDate": from_date,
     }
 

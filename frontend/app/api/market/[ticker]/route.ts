@@ -113,7 +113,12 @@ export async function GET(
       })
     }
 
-    const range = type === 'history' ? '1y' : '1d'
+    const days = parseInt(req.nextUrl.searchParams.get('days') ?? '365')
+    const range = type !== 'history' ? '1d'
+      : days <= 90  ? '3mo'
+      : days <= 180 ? '6mo'
+      : days <= 365 ? '1y'
+      : '2y'
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=${range}`
     const resp = await fetch(url, { headers: HEADERS })
     const json = await resp.json()
