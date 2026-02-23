@@ -103,6 +103,7 @@ async def trading_loop():
 
 async def process_ticker(ticker: str, stock_config: dict | None = None, index_df=None, market_regime: str = "NEUTRAL"):
     global daily_signals, daily_trades
+    now = datetime.now(timezone.utc)
     cfg = stock_config or {}
     company = cfg.get("name", ticker)
 
@@ -236,7 +237,22 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             market_regime=market_regime,
         )
 
-        if buy_score < _settings.get_int("signal_threshold"):
+        # Segment-differentiated threshold based on avg daily SEK turnover
+        # Large cap (>100M/dag): stricter threshold — more signals available, higher bar
+        # Mid cap (30–100M/dag): standard threshold
+        # Small cap (<30M/dag): same as standard (few signals, don't raise bar further)
+        base_threshold = _settings.get_int("signal_threshold")
+        try:
+            avg_turnover = (df["close"] * df["volume"]).mean()
+            if avg_turnover >= 100_000_000:
+                signal_threshold = base_threshold + 10  # Large cap: +10p
+                logger.debug(f"{ticker}: Large cap ({avg_turnover/1e6:.0f}M SEK/dag) — tröskel {signal_threshold}p")
+            else:
+                signal_threshold = base_threshold
+        except Exception:
+            signal_threshold = base_threshold
+
+        if buy_score < signal_threshold:
             return
 
         # Positions full — check if rotation is warranted

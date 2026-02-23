@@ -1,6 +1,9 @@
+import logging
 from typing import Optional
 import pandas as pd
 import pandas_ta as pta
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_market_regime(index_df: pd.DataFrame) -> str:
@@ -74,7 +77,11 @@ def calculate_indicators(df: pd.DataFrame) -> dict:
     # Moving averages
     ma20_s = pta.sma(close, length=20)
     ma50_s = pta.sma(close, length=50) if len(df) >= 50 else None
-    ma200_s = pta.sma(close, length=200) if len(df) >= 200 else None
+    if len(df) >= 200:
+        ma200_s = pta.sma(close, length=200)
+    else:
+        ma200_s = None
+        logger.debug(f"MA200 saknas: bara {len(df)} handelsdagar tillgängliga (behöver 200)")
     ema20_s = pta.ema(close, length=20)
 
     # Bollinger Bands (20, 2)
