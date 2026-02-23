@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import RsiChart from "@/components/dashboard/RsiChart";
 import BollingerChart from "@/components/dashboard/BollingerChart";
 import AnalyzeButton from "@/components/dashboard/AnalyzeButton";
+import { AVANZA_URLS } from "@/lib/avanza";
 import Link from "next/link";
 
 export const revalidate = 30;
@@ -80,14 +81,16 @@ export default async function StockDetailPage({
             </Link>
             <span className="text-gray-700">/</span>
             <h1 className="text-xl font-bold">{ticker}</h1>
-            <a
-              href={`https://www.avanza.se/search/#searchQuery=${encodeURIComponent(ticker)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full hover:bg-blue-500/20 transition"
-            >
-              Avanza ↗
-            </a>
+            {AVANZA_URLS[ticker] && (
+              <a
+                href={AVANZA_URLS[ticker]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full hover:bg-blue-500/20 transition"
+              >
+                Avanza ↗
+              </a>
+            )}
             <AnalyzeButton ticker={ticker} />
           </div>
           {price && (
