@@ -169,38 +169,61 @@ YAHOO_SYMBOLS = {
 }
 
 
+MIN_DAILY_TURNOVER_SEK = 30_000_000   # 30M SEK/dag — filtrerar bort illikvida mikrokap
+MIN_HISTORY_DAYS      = 50            # Minst 50 handelsdagar för tillförlitlig bedömning
+
+
 def score_candidate(ticker: str, indicators: dict, df) -> tuple[float, list[str]]:
     """
-    Score a stock as a trading candidate (0–100).
-    Higher = better trading opportunities.
+    Score a stock as a trading candidate (0–100+).
+    Returns score=0 and a disqualification reason if liquidity/history filters fail.
+    Higher score = bättre handelskandidat.
     """
     score = 0.0
     reasons = []
 
-    # 1. Daily volatility (ATR / price) — want 2–8%
     price = indicators.get("current_price", 0)
     atr = indicators.get("atr", 0)
+
+    # LIKVIDITETSFILTER: minst 30M SEK/dag i genomsnittlig omsättning.
+    # Filtrerar bort mikrokap och First North-bolag med låg handel.
+    if not df.empty and "close" in df.columns and "volume" in df.columns:
+        avg_turnover = (df["close"] * df["volume"]).mean()
+        if avg_turnover < MIN_DAILY_TURNOVER_SEK:
+            return 0.0, [f"Filtrerad: omsättning {avg_turnover / 1e6:.1f}M SEK/dag (min {MIN_DAILY_TURNOVER_SEK // 1_000_000}M)"]
+        elif avg_turnover >= 200_000_000:
+            score += 20
+            reasons.append(f"Mycket hög likviditet: {avg_turnover / 1e6:.0f}M SEK/dag")
+        elif avg_turnover >= 80_000_000:
+            score += 10
+            reasons.append(f"God likviditet: {avg_turnover / 1e6:.0f}M SEK/dag")
+
+    # HISTORIKFILTER: minst 50 handelsdagar för tillförlitliga indikatorer
+    if len(df) < MIN_HISTORY_DAYS:
+        return 0.0, [f"Filtrerad: bara {len(df)} handelsdagar (min {MIN_HISTORY_DAYS})"]
+
+    # 1. Daglig volatilitet (ATR / pris) — vi vill ha 2–8% för bra handelsmöjligheter
     if price and atr:
         daily_vol_pct = (atr / price) * 100
         if 2 <= daily_vol_pct <= 8:
-            score += 30
+            score += 25
             reasons.append(f"Bra volatilitet: {daily_vol_pct:.1f}%/dag")
         elif daily_vol_pct > 8:
-            score += 15
+            score += 10
             reasons.append(f"Hög volatilitet: {daily_vol_pct:.1f}%/dag")
         else:
             reasons.append(f"Låg volatilitet: {daily_vol_pct:.1f}%/dag")
 
-    # 2. Volume ratio — want > 1.0 (active trading)
+    # 2. Volymratio — vi vill ha >1.0 (aktivt handlad)
     vol_ratio = indicators.get("volume_ratio", 0)
     if vol_ratio >= 1.5:
-        score += 25
+        score += 20
         reasons.append(f"Hög volym: {vol_ratio:.1f}× snitt")
     elif vol_ratio >= 1.0:
-        score += 15
+        score += 10
         reasons.append(f"Normal volym: {vol_ratio:.1f}× snitt")
 
-    # 3. Trend quality — price vs MA50/MA200
+    # 3. Trендkvalitet — pris vs MA50/MA200
     ma50 = indicators.get("ma50")
     ma200 = indicators.get("ma200")
     if price and ma50 and price > ma50:
@@ -210,18 +233,53 @@ def score_candidate(ticker: str, indicators: dict, df) -> tuple[float, list[str]
         score += 15
         reasons.append("Pris över MA200 (långsiktig upptrend)")
 
-    # 4. RSI in tradeable range (30–70)
+    # 4. RSI i handelsbart läge (30–70)
     rsi = indicators.get("rsi")
     if rsi and 30 <= rsi <= 70:
         score += 10
-        reasons.append(f"RSI i handelsbart läge: {rsi:.0f}")
+        reasons.append(f"RSI: {rsi:.0f} (handelsbart läge)")
 
     return round(score, 1), reasons
 
 
+def _derive_stock_config(indicators: dict, df) -> dict:
+    """
+    Derive per-stock trading config (strategy, SL%, TP%, ATR-multiplier)
+    from the stock's own volatility profile.
+    """
+    price = indicators.get("current_price", 1)
+    atr = indicators.get("atr") or 0
+    rsi = indicators.get("rsi") or 50
+    ma50 = indicators.get("ma50")
+    ma200 = indicators.get("ma200")
+    atr_pct = atr / price if price else 0.02
+
+    # Strategy determination
+    if rsi < 40 and ma50 and price < ma50:
+        strategy = "mean_reversion"
+    elif ma50 and ma200 and price > ma50 and price > ma200:
+        strategy = "trend_following"
+    else:
+        strategy = "trend_following"
+
+    # ATR-baserade SL/TP — begränsade till rimliga intervall
+    stop_loss_pct  = round(min(0.09, max(0.03, atr_pct * 1.5)), 3)
+    take_profit_pct = round(min(0.18, max(0.06, atr_pct * 3.0)), 3)
+
+    return {
+        "strategy":        strategy,
+        "stop_loss_pct":   stop_loss_pct,
+        "take_profit_pct": take_profit_pct,
+        "atr_multiplier":  1.3,
+    }
+
+
+ROTATION_MARGIN = 25   # Ny kandidat måste vara minst 25p bättre än den svagaste
+
+
 async def run_scan():
-    """Main scan function — called weekly by scheduler."""
-    logger.info("Startar veckovis aktiesskanning...")
+    """Main scan function — called daily/weekly by scheduler."""
+    logger.info("Startar aktiesskanning...")
     db = get_client()
 
     # Get current watchlist tickers
@@ -235,8 +293,9 @@ async def run_scan():
         if not yahoo_symbol:
             continue
         try:
-            df = await get_price_history(ticker, days=60)
-            if df.empty or len(df) < 20:
+            # 120 dagar för mer tillförlitliga genomsnitt och trendanalyser
+            df = await get_price_history(ticker, days=120)
+            if df.empty or len(df) < MIN_HISTORY_DAYS:
                 continue
             indicators = calculate_indicators(df)
             if not indicators:
@@ -248,9 +307,13 @@ async def run_scan():
                 "score": score,
                 "reasons": reasons,
                 "indicators": indicators,
+                "df": df,
                 "in_watchlist": ticker in current_tickers,
             })
-            logger.info(f"  {ticker}: {score:.0f}p")
+            if score > 0:
+                logger.info(f"  {ticker}: {score:.0f}p")
+            else:
+                logger.debug(f"  {ticker}: filtrerad – {reasons[0] if reasons else '?'}")
         except Exception as e:
             logger.warning(f"  {ticker}: fel – {e}")
 
@@ -258,18 +321,18 @@ async def run_scan():
         logger.warning("Skanning returnerade inga resultat.")
         return
 
-    # Sort by score
+    # Sort by score — disqualified stocks (score=0) hamnar sist
     results.sort(key=lambda x: x["score"], reverse=True)
 
-    # Top candidates NOT in watchlist
-    top_new = [r for r in results if not r["in_watchlist"]][:5]
+    # Top candidates NOT in watchlist (only qualified, score > 0)
+    top_new = [r for r in results if not r["in_watchlist"] and r["score"] > 0][:5]
 
-    # Weakest in current watchlist
-    current_scored = [r for r in results if r["in_watchlist"]]
+    # Weakest in current watchlist (only those that qualified the liquidity filter)
+    current_scored = [r for r in results if r["in_watchlist"] and r["score"] > 0]
     current_scored.sort(key=lambda x: x["score"])
     weakest = current_scored[:2] if current_scored else []
 
-    # Check which tickers have open positions (don't replace those)
+    # Check which tickers have open positions (never rotate out of those)
     open_trades = db.table("stock_trades").select("ticker").eq("status", "open").execute()
     open_tickers = {t["ticker"] for t in (open_trades.data or [])}
 
@@ -281,29 +344,33 @@ async def run_scan():
             if weak["ticker"] in replaced_tickers:
                 continue
             if weak["ticker"] in open_tickers:
-                logger.info(f"Hoppar over {weak['ticker']} — oppna position finns.")
+                logger.info(f"Hoppar over {weak['ticker']} — öppen position finns.")
                 continue
-            if candidate["score"] > weak["score"] + 10:
+            # Kräv att ny kandidat är minst ROTATION_MARGIN poäng bättre
+            if candidate["score"] > weak["score"] + ROTATION_MARGIN:
+                cfg = _derive_stock_config(candidate["indicators"], candidate["df"])
+
                 # Deactivate the weak stock
                 db.table("stock_watchlist").update({"active": False}).eq("ticker", weak["ticker"]).execute()
 
-                # Add the better stock
+                # Add the better stock with derived config
                 db.table("stock_watchlist").insert({
-                    "ticker": candidate["ticker"],
-                    "name": candidate["name"],
-                    "strategy": "trend_following",
-                    "stop_loss_pct": 0.05,
-                    "take_profit_pct": 0.10,
-                    "atr_multiplier": 1.3,
-                    "active": True,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "ticker":          candidate["ticker"],
+                    "name":            candidate["name"],
+                    "strategy":        cfg["strategy"],
+                    "stop_loss_pct":   cfg["stop_loss_pct"],
+                    "take_profit_pct": cfg["take_profit_pct"],
+                    "atr_multiplier":  cfg["atr_multiplier"],
+                    "active":          True,
+                    "created_at":      datetime.now(timezone.utc).isoformat(),
                 }).execute()
 
                 replaced.append((weak, candidate))
                 replaced_tickers.add(weak["ticker"])
                 logger.info(
                     f"Bytte {weak['ticker']} ({weak['score']:.0f}p) mot "
-                    f"{candidate['ticker']} ({candidate['score']:.0f}p) i watchlistan"
+                    f"{candidate['ticker']} ({candidate['score']:.0f}p) | "
+                    f"strategi={cfg['strategy']} SL={cfg['stop_loss_pct']} TP={cfg['take_profit_pct']}"
                 )
                 break
 
