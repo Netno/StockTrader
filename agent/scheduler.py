@@ -1,4 +1,5 @@
 import logging
+import time as _time
 from datetime import datetime, date, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -27,6 +28,21 @@ open_positions: dict[str, dict] = {}
 cooldowns: dict[str, datetime] = {}
 daily_signals = 0
 daily_trades = 0
+
+# Dedup-cache för nyhetssparande: förhindrar att samma rubrik sparas flera gånger per dag
+# Nyckel: "ticker:headline" -> expires_at (monotonic)
+_news_save_cache: dict[str, float] = {}
+_NEWS_SAVE_TTL = 24 * 3600  # 24h — sparar varje unik rubrik max en gång per dag
+
+
+def _should_save_news(ticker: str, headline: str) -> bool:
+    """Returnerar True (och markerar som sparad) om rubriken inte sparats senaste 24h."""
+    key = f"{ticker}:{headline}"
+    now = _time.monotonic()
+    if _news_save_cache.get(key, 0) > now:
+        return False
+    _news_save_cache[key] = now + _NEWS_SAVE_TTL
+    return True
 
 scheduler = AsyncIOScheduler(timezone="Europe/Stockholm")
 
@@ -154,16 +170,17 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
     if needs_sentiment:
         for item in news_list[:1]:  # max 1 Gemini-anrop per ticker per loop
             sentiment = await analyze_sentiment(ticker, item["headline"])
-            await db.save_news(
-                ticker=ticker,
-                headline=item["headline"],
-                url=item["url"],
-                sentiment=sentiment["sentiment"],
-                sentiment_score=sentiment["score"],
-                reason=sentiment["reason"],
-                source=item["source"],
-                published_at=item["published_at"],
-            )
+            if _should_save_news(ticker, item["headline"]):
+                await db.save_news(
+                    ticker=ticker,
+                    headline=item["headline"],
+                    url=item["url"],
+                    sentiment=sentiment["sentiment"],
+                    sentiment_score=sentiment["score"],
+                    reason=sentiment["reason"],
+                    source=item["source"],
+                    published_at=item["published_at"],
+                )
             if latest_sentiment is None:
                 latest_sentiment = sentiment
         logger.debug(f"{ticker}: sentimentanalys körd (pre_score buy={pre_buy_score} sell={pre_sell_score})")
