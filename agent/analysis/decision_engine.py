@@ -21,6 +21,7 @@ def score_buy_signal(
 
     rsi = indicators.get("rsi")
     volume_ratio = indicators.get("volume_ratio", 1.0)
+    daily_return = indicators.get("daily_return")
     current_price = indicators.get("current_price")
     ma50 = indicators.get("ma50")
     ma200 = indicators.get("ma200")
@@ -81,10 +82,19 @@ def score_buy_signal(
             score -= 15
             reasons.append(f"Pris precis under MA200 ({ma200:.2f}) — varning -15p")
 
-    # Volume > 150% of 20-day avg → +15p
+    # Volume > 150% of 20-day avg — direction-adjusted
+    # Hög volym på uppgångsdag = starkt bekräftelsesignal (+15p)
+    # Hög volym utan riktning = svagare (+8p)
+    # Hög volym på nedgångsdag = säljpress, ej köpsignal (0p)
     if volume_ratio >= 1.5:
-        score += 15
-        reasons.append(f"Volym: +{(volume_ratio - 1) * 100:.0f}% vs snitt")
+        if daily_return is not None and daily_return > 0:
+            score += 15
+            reasons.append(f"Volym: +{(volume_ratio - 1) * 100:.0f}% vs snitt (prisstigande dag)")
+        elif daily_return is not None and daily_return < 0:
+            pass  # Hög volym på nedgång — säljpress, ej köpsignal
+        else:
+            score += 8
+            reasons.append(f"Volym: +{(volume_ratio - 1) * 100:.0f}% vs snitt")
 
     # Gemini positive sentiment → +15p
     if news_sentiment and news_sentiment.get("sentiment") == "POSITIVE":
@@ -196,7 +206,7 @@ def calculate_stop_take(price: float, indicators: dict, stock_config: dict | Non
     """Calculate ATR-based stop-loss and take-profit prices."""
     config = stock_config or {}
     atr = indicators.get("atr") or 0
-    atr_multiplier = config.get("atr_multiplier", 1.3)
+    atr_multiplier = config.get("atr_multiplier", 2.0)
     stop_pct = config.get("stop_loss_pct", 0.05)
     take_pct = config.get("take_profit_pct", 0.10)
 

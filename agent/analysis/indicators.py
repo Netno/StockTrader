@@ -86,7 +86,23 @@ def calculate_indicators(df: pd.DataFrame) -> dict:
     # Volume ratio vs 20-day average
     vol_avg = volume.rolling(20).mean().iloc[-1]
     current_vol = volume.iloc[-1]
-    volume_ratio = float(current_vol / vol_avg) if vol_avg and vol_avg > 0 else 1.0
+    try:
+        vol_avg_f = float(vol_avg)
+        current_vol_f = float(current_vol)
+        volume_ratio = (current_vol_f / vol_avg_f) if (vol_avg_f > 0 and not pd.isna(vol_avg_f) and not pd.isna(current_vol_f)) else 1.0
+    except (ValueError, ZeroDivisionError):
+        volume_ratio = 1.0
+
+    # Daily return (today vs yesterday close) for volume direction context
+    daily_return = None
+    if len(close) >= 2:
+        try:
+            prev_close = float(close.iloc[-2])
+            curr_close = float(close.iloc[-1])
+            if prev_close > 0:
+                daily_return = round((curr_close - prev_close) / prev_close, 4)
+        except (ValueError, ZeroDivisionError):
+            pass
 
     def last(s):
         return round(float(s.iloc[-1]), 4) if s is not None and not s.empty else None
@@ -118,5 +134,6 @@ def calculate_indicators(df: pd.DataFrame) -> dict:
         "bollinger_mid":    last(bb_df[bb_mid])   if bb_mid   else None,
         "atr":              last(atr_s),
         "volume_ratio":     round(volume_ratio, 2),
+        "daily_return":     daily_return,
         "current_price":    round(float(close.iloc[-1]), 2),
     }

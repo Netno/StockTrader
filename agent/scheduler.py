@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -219,6 +219,9 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                     ticker, company, price, qty, pnl_pct, pnl_kr, sell_reasons, confidence,
                 )
 
+                # Cooldown 4h för indikatorbaserade säljsignaler
+                cooldowns[ticker] = now + timedelta(hours=4)
+
                 daily_signals += 1
                 logger.info(
                     f"SALJ-SIGNAL {ticker} | score={sell_score} | anvandaren maste salja pa Avanza"
@@ -301,6 +304,9 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             ticker, company, price, quantity,
             price * quantity, buy_reasons, stop_loss, take_profit, confidence,
         )
+
+        # Cooldown 24h — förhindrar upprepade identiska signaler vid nästa tick
+        cooldowns[ticker] = now + timedelta(hours=24)
 
         daily_signals += 1
         logger.info(
