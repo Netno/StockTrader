@@ -3,7 +3,7 @@ from datetime import datetime, date, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from config import TICKERS, PAPER_BALANCE
+from config import PAPER_BALANCE
 import settings as _settings
 from data.yahoo_client import get_price_history, get_current_price, get_index_history, get_earnings_date
 from data.news_fetcher import fetch_news
@@ -83,6 +83,7 @@ async def trading_loop():
         index_df = None
 
     watchlist = await db.get_watchlist()
+    stock_config_map = {s["ticker"]: s for s in watchlist}
 
     for stock in watchlist:
         ticker = stock["ticker"]
@@ -92,14 +93,15 @@ async def trading_loop():
             continue
 
         try:
-            await process_ticker(ticker, index_df=index_df)
+            await process_ticker(ticker, stock_config=stock, index_df=index_df)
         except Exception as e:
             logger.error(f"Fel vid bearbetning av {ticker}: {e}", exc_info=True)
 
 
-async def process_ticker(ticker: str, index_df=None):
+async def process_ticker(ticker: str, stock_config: dict | None = None, index_df=None):
     global daily_signals, daily_trades
-    company = TICKERS.get(ticker, {}).get("name", ticker)
+    cfg = stock_config or {}
+    company = cfg.get("name", ticker)
 
     # 1. Price history + indicators
     df = await get_price_history(ticker, days=220)
@@ -254,8 +256,9 @@ async def process_ticker(ticker: str, index_df=None):
                     weakest_ticker, "SELL", pos_price, pos_qty, float(weakest_sell_score),
                     weakest_sell_score, rotation_reasons, indicators, 0.0, 0.0,
                 )
+                weakest_cfg = stock_config_map.get(weakest_ticker, {})
                 await ntfy.send_sell_signal(
-                    weakest_ticker, TICKERS.get(weakest_ticker, {}).get("name", weakest_ticker),
+                    weakest_ticker, weakest_cfg.get("name", weakest_ticker),
                     pos_price, pos_qty, 0.0, 0.0, rotation_reasons, float(weakest_sell_score),
                 )
                 logger.info(
@@ -274,7 +277,7 @@ async def process_ticker(ticker: str, index_df=None):
             logger.info(f"{ticker}: for hogt pris for en hel aktie.")
             return
 
-        stop_loss, take_profit = calculate_stop_take(ticker, price, indicators)
+        stop_loss, take_profit = calculate_stop_take(price, indicators, cfg)
         news_headline = news_list[0]["headline"] if news_list else ""
         description = await generate_signal_description(ticker, "BUY", price, buy_reasons, news_headline)
         indicators["signal_description"] = description

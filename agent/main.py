@@ -339,7 +339,7 @@ async def test_ticker(ticker: str):
     price = current.get("price") or indicators["current_price"]
 
     buy_score, buy_reasons = score_buy_signal(ticker, indicators)
-    stop_loss, take_profit = calculate_stop_take(ticker, price, indicators)
+    stop_loss, take_profit = calculate_stop_take(price, indicators)
 
     return {
         "ticker": ticker,
@@ -361,10 +361,12 @@ async def fetch_news_for_ticker(ticker: str):
     from data.news_fetcher import fetch_news
     from analysis.sentiment import analyze_sentiment
     from db import supabase_client as db
-    from config import TICKERS
+    from db.supabase_client import get_watchlist
 
     ticker = ticker.upper()
-    company = TICKERS.get(ticker, {}).get("name", ticker)
+    watchlist = await get_watchlist()
+    stock = next((s for s in watchlist if s["ticker"] == ticker), {})
+    company = stock.get("name", ticker)
 
     news_list = await fetch_news(ticker, company, max_items=5)
     if not news_list:
@@ -488,8 +490,11 @@ async def trigger_trading_loop():
 async def trigger_single_ticker(ticker: str, background_tasks: BackgroundTasks):
     """Manually run process_ticker for a single ticker (full DB writes + signal generation)."""
     from scheduler import process_ticker
+    from db.supabase_client import get_watchlist
     ticker = ticker.upper()
-    background_tasks.add_task(process_ticker, ticker)
+    watchlist = await get_watchlist()
+    stock_config = next((s for s in watchlist if s["ticker"] == ticker), {})
+    background_tasks.add_task(process_ticker, ticker, stock_config)
     return {"ok": True, "message": f"Analys av {ticker} startad i bakgrunden."}
 
 
@@ -522,7 +527,7 @@ async def insert_test_signal():
     current = await get_current_price(ticker)
     price = current.get("price") or 500.0
     quantity = 4
-    stop_loss, take_profit = calculate_stop_take(ticker, price, {"atr": price * 0.01})
+    stop_loss, take_profit = calculate_stop_take(price, {"atr": price * 0.01})
 
     signal_id = await save_signal(
         ticker=ticker,

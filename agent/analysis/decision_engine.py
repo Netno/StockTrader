@@ -1,5 +1,4 @@
 from typing import Optional
-from config import TICKERS
 from data.insider_fetcher import has_significant_insider_buy
 import settings as _settings
 
@@ -170,9 +169,9 @@ def calculate_position_size(confidence_pct: float) -> float:
         return max_size * 0.40   # ~40%
 
 
-def calculate_stop_take(ticker: str, price: float, indicators: dict) -> tuple[float, float]:
+def calculate_stop_take(price: float, indicators: dict, stock_config: dict | None = None) -> tuple[float, float]:
     """Calculate ATR-based stop-loss and take-profit prices."""
-    config = TICKERS.get(ticker, {})
+    config = stock_config or {}
     atr = indicators.get("atr") or 0
     atr_multiplier = config.get("atr_multiplier", 1.3)
     stop_pct = config.get("stop_loss_pct", 0.05)
