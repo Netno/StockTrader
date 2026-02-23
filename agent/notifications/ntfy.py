@@ -136,8 +136,19 @@ async def _send(
 
 async def _log(notif_type: str, title: str, message: str, ticker: str = None):
     try:
+        from datetime import timedelta
         from db.supabase_client import get_client
-        get_client().table("stock_notifications").insert({
+        db = get_client()
+
+        # Dedup: skip if same type was already logged within the last 5 minutes
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        query = db.table("stock_notifications").select("id").eq("type", notif_type).gte("created_at", cutoff)
+        query = query.eq("ticker", ticker) if ticker else query.is_("ticker", None)
+        if query.execute().data:
+            print(f"Notif dedup: {notif_type} redan skickad nyligen, hoppar over.")
+            return
+
+        db.table("stock_notifications").insert({
             "type": notif_type,
             "title": title,
             "message": message,

@@ -182,14 +182,14 @@ export default async function DashboardPage() {
         </div>
 
         {/* Portfolio notifications */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col">
           <h2 className="text-sm font-semibold text-gray-300 mb-4">Portföljnotiser</h2>
           {notifData.length === 0 ? (
             <p className="text-gray-600 text-sm">
               Inga notiser än. Morgon- och kvällssummeringar dyker upp här.
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 overflow-y-auto max-h-80 pr-1">
               {(notifData as any[]).map((n) => (
                 <div key={n.id} className="flex gap-3">
                   <div
