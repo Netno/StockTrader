@@ -74,4 +74,18 @@ TICKERS = {
         "take_profit_pct": 0.09,
         "atr_multiplier": 1.3,
     },
+    "EQT": {
+        "name": "EQT",
+        "strategy": "trend_following",
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.10,
+        "atr_multiplier": 1.4,
+    },
+    "AZN": {
+        "name": "AstraZeneca",
+        "strategy": "news_driven",
+        "stop_loss_pct": 0.04,
+        "take_profit_pct": 0.09,
+        "atr_multiplier": 1.3,
+    },
 }

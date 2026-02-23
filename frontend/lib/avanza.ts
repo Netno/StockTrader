@@ -5,4 +5,6 @@ export const AVANZA_URLS: Record<string, string> = {
   "HTRO":     "https://www.avanza.se/aktier/om-aktien.html/299737/hexatronic-group",
   "SSAB B":   "https://www.avanza.se/aktier/om-aktien.html/495284/ssab-b",
   "VOLV B":   "https://www.avanza.se/aktier/om-aktien.html/5269/volvo-b",
+  "EQT":      "https://www.avanza.se/aktier/om-aktien.html/956272/eqt",
+  "AZN":      "https://www.avanza.se/aktier/om-aktien.html/5361/astrazeneca",
 };
