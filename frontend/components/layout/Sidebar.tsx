@@ -60,11 +60,7 @@ export default function Sidebar() {
       </aside>
 
       {/* ── Mobile top bar ── */}
-      <header className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-3 bg-gray-900 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <BarChart2 className="text-blue-400" size={18} />
-          <span className="font-bold text-base tracking-tight">Aktiemotor</span>
-        </div>
+      <header className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
         <button
           onClick={() => setOpen(true)}
           aria-label="Öppna meny"
@@ -72,6 +68,10 @@ export default function Sidebar() {
         >
           <Menu size={22} />
         </button>
+        <div className="flex items-center gap-2">
+          <BarChart2 className="text-blue-400" size={18} />
+          <span className="font-bold text-base tracking-tight">Aktiemotor</span>
+        </div>
       </header>
 
       {/* ── Mobile drawer overlay ── */}

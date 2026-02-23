@@ -34,6 +34,11 @@ daily_trades = 0
 _news_save_cache: dict[str, float] = {}
 _NEWS_SAVE_TTL = 24 * 3600  # 24h — sparar varje unik rubrik max en gång per dag
 
+# Cache för generate_signal_description: förhindrar upprepade Gemini-anrop för samma signal
+# Nyckel: "ticker:BUY/SELL" -> (description, expires_at)
+_description_cache: dict[str, tuple[str, float]] = {}
+_DESCRIPTION_TTL = 2 * 3600  # 2h — återanvänd samma beskrivning för upprepade signaler
+
 
 def _should_save_news(ticker: str, headline: str) -> bool:
     """Returnerar True (och markerar som sparad) om rubriken inte sparats senaste 24h."""
@@ -43,6 +48,18 @@ def _should_save_news(ticker: str, headline: str) -> bool:
         return False
     _news_save_cache[key] = now + _NEWS_SAVE_TTL
     return True
+
+
+async def _get_signal_description(ticker: str, signal_type: str, price: float, reasons: list[str], news_headline: str = "") -> str:
+    """Hämtar signalbeskrivning från cache eller genererar ny via Gemini (max 1 anrop/2h per ticker+typ)."""
+    key = f"{ticker}:{signal_type}"
+    now = _time.monotonic()
+    cached = _description_cache.get(key)
+    if cached and now < cached[1]:
+        return cached[0]
+    description = await generate_signal_description(ticker, signal_type, price, reasons, news_headline)
+    _description_cache[key] = (description, now + _DESCRIPTION_TTL)
+    return description
 
 scheduler = AsyncIOScheduler(timezone="Europe/Stockholm")
 
@@ -161,7 +178,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
 
     # Hämta nyheter (cachas 30 min — billigt)
     # Kör Gemini-sentimentanalys BARA om teknisk signal redan är lovande
-    _SENTIMENT_GATE = 25  # poäng utan sentiment för att motivera Gemini-anrop
+    _SENTIMENT_GATE = 35  # poäng utan sentiment för att motivera Gemini-anrop
     needs_sentiment = in_position or pre_buy_score >= _SENTIMENT_GATE or pre_sell_score >= _SENTIMENT_GATE
 
     news_list = await fetch_news(ticker, company)
@@ -220,7 +237,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             label = "Stop-loss" if hit_sl else "Take-profit"
             reasons = [f"{label} natt ({price:.2f} kr) — salj pa Avanza"]
             news_headline = news_list[0]["headline"] if news_list else ""
-            description = await generate_signal_description(ticker, "SELL", price, reasons, news_headline)
+            description = await _get_signal_description(ticker, "SELL", price, reasons, news_headline)
             indicators["signal_description"] = description
 
             await db.save_signal(
@@ -231,6 +248,9 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 ticker, company, price, qty, pnl_pct, pnl_kr, reasons, 100.0,
                 notif_subtype=notif_subtype,
             )
+
+            # Cooldown 2h — förhindrar upprepade SL/TP-signaler om priset svävar kring nivån
+            cooldowns[ticker] = now + timedelta(hours=2)
 
             daily_signals += 1
             logger.info(
@@ -249,7 +269,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 confidence = min(99.0, float(sell_score))
                 sell_reasons.append("Salj pa Avanza och stang positionen i appen")
                 news_headline = news_list[0]["headline"] if news_list else ""
-                description = await generate_signal_description(ticker, "SELL", price, sell_reasons, news_headline)
+                description = await _get_signal_description(ticker, "SELL", price, sell_reasons, news_headline)
                 indicators["signal_description"] = description
 
                 await db.save_signal(
@@ -351,7 +371,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
 
         stop_loss, take_profit = calculate_stop_take(price, indicators, cfg)
         news_headline = news_list[0]["headline"] if news_list else ""
-        description = await generate_signal_description(ticker, "BUY", price, buy_reasons, news_headline)
+        description = await _get_signal_description(ticker, "BUY", price, buy_reasons, news_headline)
         indicators["signal_description"] = description
 
         await db.save_signal(
