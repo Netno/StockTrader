@@ -10,10 +10,11 @@ def score_buy_signal(
     insider_trades: Optional[list] = None,
     has_open_report_soon: bool = False,
     relative_strength: Optional[float] = None,
+    market_regime: str = "NEUTRAL",
 ) -> tuple[int, list[str]]:
     """
     Calculate buy signal score.
-    Returns (score, reasons). Signal fires if score >= 60.
+    Returns (score, reasons). Signal fires if score >= threshold (default 60).
     """
     score = 0
     reasons = []
@@ -28,29 +29,57 @@ def score_buy_signal(
     macd_signal = indicators.get("macd_signal")
     macd_prev = indicators.get("macd_prev")
     macd_signal_prev = indicators.get("macd_signal_prev")
+    macd_histogram = indicators.get("macd_histogram")
 
-    # RSI < 35 → +25p
+    # REGIMFILTER: penalisera köp i sidlesgående/fallande marknad
+    if market_regime == "BEAR":
+        score -= 30
+        reasons.append("⛔ Marknadsregim: BEAR (OMXS30 under MA200) -30p")
+    elif market_regime == "NEUTRAL":
+        score -= 10
+        reasons.append("Marknadsregim: NEUTRAL -10p")
+
+    # RSI < 35 → +25p om pris över MA200 (upptrend), annars +10p
     if rsi is not None and rsi < 35:
-        score += 25
-        reasons.append(f"RSI: {rsi:.1f} (översålt)")
+        in_uptrend = ma200 and current_price and current_price > ma200
+        if in_uptrend:
+            score += 25
+            reasons.append(f"RSI: {rsi:.1f} (översålt i upptrend)")
+        else:
+            score += 10
+            reasons.append(f"RSI: {rsi:.1f} (översålt men under MA200 — svagare signal)")
 
-    # MACD bullish crossover → +20p
+    # MACD bullish crossover + positivt histogram → +20p
     if None not in (macd, macd_signal, macd_prev, macd_signal_prev):
         if macd_prev < macd_signal_prev and macd > macd_signal:
-            score += 20
-            reasons.append("MACD crossover uppåt")
+            if macd_histogram is not None and macd_histogram > 0:
+                score += 20
+                reasons.append("MACD crossover uppåt (histogram positivt)")
+            else:
+                score += 10
+                reasons.append("MACD crossover uppåt (histogram ej bekräftat)")
 
-    # Price near MA50 (within 2%) → +20p
+    # MA50-studs: pris precis OVANFÖR MA50 (0–2%) → +20p
+    # Pris precis UNDER MA50 (-2%–0) → -10p (nedbrott, ej studs)
     if current_price and ma50:
-        if abs(current_price - ma50) / ma50 < 0.02:
+        pct_from_ma50 = (current_price - ma50) / ma50
+        if 0 <= pct_from_ma50 < 0.02:
             score += 20
-            reasons.append(f"Pris studsar på MA50 ({ma50:.2f})")
+            reasons.append(f"Pris studsar på MA50 ovanifrån ({ma50:.2f})")
+        elif -0.02 <= pct_from_ma50 < 0:
+            score -= 10
+            reasons.append(f"Pris precis under MA50 ({ma50:.2f}) — nedbrott -10p")
 
-    # Price near MA200 (within 2%) → +20p
+    # MA200-studs: pris precis OVANFÖR MA200 (0–2%) → +20p
+    # Pris precis UNDER MA200 (-2%–0) → -15p
     if current_price and ma200:
-        if abs(current_price - ma200) / ma200 < 0.02:
+        pct_from_ma200 = (current_price - ma200) / ma200
+        if 0 <= pct_from_ma200 < 0.02:
             score += 20
-            reasons.append(f"Pris studsar på MA200 ({ma200:.2f})")
+            reasons.append(f"Pris studsar på MA200 ovanifrån ({ma200:.2f})")
+        elif -0.02 <= pct_from_ma200 < 0:
+            score -= 15
+            reasons.append(f"Pris precis under MA200 ({ma200:.2f}) — varning -15p")
 
     # Volume > 150% of 20-day avg → +15p
     if volume_ratio >= 1.5:
@@ -67,16 +96,16 @@ def score_buy_signal(
         score += 10
         reasons.append("Insiderköp >500 000 kr (FI)")
 
-    # Bollinger lower band touch (within 1%) → +10p
-    if current_price and bb_lower:
-        if current_price <= bb_lower * 1.01:
+    # Bollinger lower band touch (within 1%) → +10p, kräver även RSI < 45
+    if current_price and bb_lower and current_price <= bb_lower * 1.01:
+        if rsi is not None and rsi < 45:
             score += 10
-            reasons.append(f"Bollinger: Touch undre band ({bb_lower:.2f})")
+            reasons.append(f"Bollinger: Touch undre band ({bb_lower:.2f}, bekräftat av RSI)")
 
-    # Rapport within 48h → -20p penalty
+    # Rapport within 48h → -30p hard penalty
     if has_open_report_soon:
-        score -= 20
-        reasons.append("⚠️ Rapport inom 48h (penalty -20p)")
+        score -= 30
+        reasons.append("⚠️ Rapport inom 48h (penalty -30p)")
 
     # Relative strength vs OMXS30 (20-day)
     if relative_strength is not None:
@@ -116,7 +145,6 @@ def score_sell_signal(
     macd_prev = indicators.get("macd_prev")
     macd_signal_prev = indicators.get("macd_signal_prev")
 
-    stop_loss = position.get("stop_loss_price")
     take_profit = position.get("take_profit_price")
 
     # RSI > 70 → +25p
@@ -134,11 +162,6 @@ def score_sell_signal(
     if current_price and take_profit and current_price >= take_profit:
         score += 30
         reasons.append(f"Take-profit nådd ({take_profit:.2f} kr)")
-
-    # Stop-loss reached → +50p (always triggers sell)
-    if current_price and stop_loss and current_price <= stop_loss:
-        score += 50
-        reasons.append(f"Stop-loss nådd ({stop_loss:.2f} kr) ⛔")
 
     # Gemini negative sentiment → +15p
     if news_sentiment and news_sentiment.get("sentiment") == "NEGATIVE":

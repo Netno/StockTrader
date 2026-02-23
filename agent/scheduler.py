@@ -8,7 +8,7 @@ import settings as _settings
 from data.yahoo_client import get_price_history, get_current_price, get_index_history, get_earnings_date
 from data.news_fetcher import fetch_news
 from data.insider_fetcher import fetch_insider_trades
-from analysis.indicators import calculate_indicators, calculate_relative_strength
+from analysis.indicators import calculate_indicators, calculate_relative_strength, calculate_market_regime
 from analysis.sentiment import analyze_sentiment, generate_signal_description
 from analysis.decision_engine import (
     score_buy_signal,
@@ -75,12 +75,15 @@ async def trading_loop():
     now = datetime.now(timezone.utc)
     logger.info(f"Trading loop tick: {now.strftime('%H:%M:%S')}")
 
-    # Fetch OMXS30 once per loop — passed to each ticker for relative strength
+    # Fetch OMXS30 once per loop — used for relative strength and market regime
     try:
         index_df = await get_index_history()
     except Exception as e:
         logger.warning(f"Kunde inte hämta OMXS30-data: {e}")
         index_df = None
+
+    market_regime = calculate_market_regime(index_df)
+    logger.info(f"Marknadsregim: {market_regime}")
 
     watchlist = await db.get_watchlist()
     stock_config_map = {s["ticker"]: s for s in watchlist}
@@ -93,12 +96,12 @@ async def trading_loop():
             continue
 
         try:
-            await process_ticker(ticker, stock_config=stock, index_df=index_df)
+            await process_ticker(ticker, stock_config=stock, index_df=index_df, market_regime=market_regime)
         except Exception as e:
             logger.error(f"Fel vid bearbetning av {ticker}: {e}", exc_info=True)
 
 
-async def process_ticker(ticker: str, stock_config: dict | None = None, index_df=None):
+async def process_ticker(ticker: str, stock_config: dict | None = None, index_df=None, market_regime: str = "NEUTRAL"):
     global daily_signals, daily_trades
     cfg = stock_config or {}
     company = cfg.get("name", ticker)
@@ -227,6 +230,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             ticker, indicators, latest_sentiment, insider_trades,
             has_open_report_soon=has_report_soon,
             relative_strength=rs,
+            market_regime=market_regime,
         )
 
         if buy_score < _settings.get_int("signal_threshold"):
@@ -234,11 +238,18 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
 
         # Positions full — check if rotation is warranted
         if len(open_positions) >= _settings.get_int("max_positions"):
-            # Score all open positions and find the weakest
+            # Score all open positions using their OWN indicators (not the new candidate's)
             weakest_ticker = None
             weakest_sell_score = -1
             for pos_ticker, pos in open_positions.items():
-                pos_sell_score, _ = score_sell_signal(pos_ticker, indicators, pos, latest_sentiment, relative_strength=None)
+                try:
+                    pos_df = await get_price_history(pos_ticker, days=220)
+                    pos_indicators = calculate_indicators(pos_df) if not pos_df.empty else {}
+                    pos_rs = calculate_relative_strength(pos_df, index_df) if (not pos_df.empty and index_df is not None) else None
+                except Exception:
+                    pos_indicators = {}
+                    pos_rs = None
+                pos_sell_score, _ = score_sell_signal(pos_ticker, pos_indicators, pos, latest_sentiment, relative_strength=pos_rs)
                 if pos_sell_score > weakest_sell_score:
                     weakest_sell_score = pos_sell_score
                     weakest_ticker = pos_ticker

@@ -3,6 +3,29 @@ import pandas as pd
 import pandas_ta as pta
 
 
+def calculate_market_regime(index_df: pd.DataFrame) -> str:
+    """
+    Determine overall market regime from OMXS30.
+    Returns 'BULL', 'NEUTRAL', or 'BEAR'.
+    - BULL:    price > MA50 > MA200  (trending up)
+    - BEAR:    price < MA200 * 0.95  (clear downtrend)
+    - NEUTRAL: everything else
+    """
+    if index_df is None or index_df.empty or len(index_df) < 200:
+        return "NEUTRAL"
+
+    close = index_df["close"]
+    ma50 = close.rolling(50).mean().iloc[-1]
+    ma200 = close.rolling(200).mean().iloc[-1]
+    current = close.iloc[-1]
+
+    if current > ma50 and current > ma200 and ma50 > ma200:
+        return "BULL"
+    elif current < ma200 * 0.95:
+        return "BEAR"
+    return "NEUTRAL"
+
+
 def calculate_relative_strength(
     stock_df: pd.DataFrame,
     index_df: pd.DataFrame,
@@ -69,7 +92,7 @@ def calculate_indicators(df: pd.DataFrame) -> dict:
         return round(float(s.iloc[-1]), 4) if s is not None and not s.empty else None
 
     def prev(s):
-        return round(float(s.iloc[-2]), 4) if s is not None and len(s) > 2 else None
+        return round(float(s.iloc[-2]), 4) if s is not None and len(s) >= 2 else None
 
     macd_col = [c for c in macd_df.columns if c.startswith("MACD_")][0] if macd_df is not None else None
     sig_col  = [c for c in macd_df.columns if c.startswith("MACDs_")][0] if macd_df is not None else None
