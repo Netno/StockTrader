@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { AVANZA_URLS } from "@/lib/avanza";
 
-export const revalidate = 60;
+// Matchar trading-loopens 2-minutersintervall — ingen anledning att uppdatera snabbare
+export const revalidate = 120;
 
 const strategyLabel: Record<string, string> = {
   trend_following: "Trendföljning",
@@ -37,44 +38,73 @@ function ScoreBadge({ score }: { score?: number }) {
   );
 }
 
-async function fetchStockData(ticker: string) {
-  try {
-    return await api.testTicker(ticker);
-  } catch {
-    return null;
-  }
-}
-
 export default async function StocksPage() {
-  const watchlist = await api.watchlist().catch(() => []);
+  // 1. Hämta watchlist direkt från Supabase (undviker Railway-anrop)
+  const { data: watchlist = [] } = await supabase
+    .from("stock_watchlist")
+    .select("*")
+    .eq("active", true);
 
-  // Fetch live data for all watchlist stocks in parallel
-  const stockData = await Promise.all(
-    watchlist.map(async (stock: any) => {
-      const live = await fetchStockData(stock.ticker);
-      return { ...stock, live };
-    })
-  );
+  const tickers = (watchlist ?? []).map((s: any) => s.ticker);
+  if (tickers.length === 0) return <div className="text-gray-500">Ingen watchlist.</div>;
+
+  const N = tickers.length * 4; // några rader per ticker för att säkert få senaste
+
+  // 2. Hämta senaste indikatorer, priser och signaler i parallell från Supabase
+  // INGA anrop till Railway eller Yahoo Finance — datan skrivs av trading-loopen var 2:a minut
+  const [{ data: allIndicators }, { data: allPrices }, { data: allSignals }] = await Promise.all([
+    supabase
+      .from("stock_indicators")
+      .select("*")
+      .in("ticker", tickers)
+      .order("timestamp", { ascending: false })
+      .limit(N),
+    supabase
+      .from("stock_prices")
+      .select("ticker, price, volume, timestamp")
+      .in("ticker", tickers)
+      .order("timestamp", { ascending: false })
+      .limit(N),
+    supabase
+      .from("stock_signals")
+      .select("ticker, score, reasons, stop_loss_price, take_profit_price, signal_type, created_at")
+      .in("ticker", tickers)
+      .order("created_at", { ascending: false })
+      .limit(N),
+  ]);
+
+  // Plocka senaste rad per ticker
+  const indMap: Record<string, any> = {};
+  for (const row of (allIndicators ?? [])) {
+    if (!indMap[row.ticker]) indMap[row.ticker] = row;
+  }
+  const priceMap: Record<string, any> = {};
+  for (const row of (allPrices ?? [])) {
+    if (!priceMap[row.ticker]) priceMap[row.ticker] = row;
+  }
+  const sigMap: Record<string, any> = {};
+  for (const row of (allSignals ?? [])) {
+    if (!sigMap[row.ticker]) sigMap[row.ticker] = row;
+  }
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Bevakningslista</h1>
 
       <div className="grid grid-cols-1 gap-4">
-        {stockData.map((stock) => {
-          const live = stock.live;
-          const ind = live?.indicators ?? {};
-          const price = live?.price;
-          const ma50 = ind.ma50;
+        {(watchlist ?? []).map((stock: any) => {
+          const ind     = indMap[stock.ticker]   ?? {};
+          const priceRow = priceMap[stock.ticker];
+          const sig     = sigMap[stock.ticker];
+          const price   = priceRow?.price;
+          const ma50    = ind.ma50;
           const aboveMa50 = price && ma50 && price > ma50;
+          const reasons: string[] = sig?.reasons ?? [];
 
           return (
-            <div
-              key={stock.ticker}
-              className="bg-gray-900 border border-gray-800 rounded-xl p-5"
-            >
+            <div key={stock.ticker} className="bg-gray-900 border border-gray-800 rounded-xl p-5">
               <div className="flex items-start justify-between gap-4 flex-wrap">
-                {/* Left: name + strategy */}
+                {/* Vänster: namn + strategi */}
                 <div>
                   <div className="flex items-center gap-3 flex-wrap">
                     <Link
@@ -98,12 +128,9 @@ export default async function StocksPage() {
                       </a>
                     )}
                   </div>
-                  {live?.error && (
-                    <p className="text-red-400 text-xs mt-1">{live.error}</p>
-                  )}
                 </div>
 
-                {/* Right: price + score */}
+                {/* Höger: pris + score */}
                 <div className="flex items-center gap-4">
                   {price && (
                     <div className="text-right">
@@ -113,48 +140,46 @@ export default async function StocksPage() {
                       </p>
                     </div>
                   )}
-                  <ScoreBadge score={live?.buy_score} />
+                  <ScoreBadge score={sig?.score} />
                 </div>
               </div>
 
-              {/* Indicator grid */}
-              {!live?.error && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mt-4">
-                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">RSI</p>
-                    <RsiBadge rsi={ind.rsi} />
-                  </div>
-                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">MACD</p>
-                    <span className={ind.macd >= 0 ? "text-green-400" : "text-red-400"}>
-                      {ind.macd?.toFixed(2) ?? "–"}
-                    </span>
-                  </div>
-                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">MA50</p>
-                    <span className="text-gray-300">{ind.ma50?.toFixed(2) ?? "–"}</span>
-                  </div>
-                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">MA200</p>
-                    <span className="text-gray-300">{ind.ma200?.toFixed(2) ?? "–"}</span>
-                  </div>
-                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">ATR</p>
-                    <span className="text-gray-300">{ind.atr?.toFixed(2) ?? "–"}</span>
-                  </div>
-                  <div className="bg-gray-800/50 rounded-lg p-2 text-center">
-                    <p className="text-xs text-gray-500 mb-0.5">Volym ×</p>
-                    <span className={ind.volume_ratio >= 1.5 ? "text-green-400" : "text-gray-300"}>
-                      {ind.volume_ratio?.toFixed(1) ?? "–"}×
-                    </span>
-                  </div>
+              {/* Indikatorrutnät */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mt-4">
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <p className="text-xs text-gray-500 mb-0.5">RSI</p>
+                  <RsiBadge rsi={ind.rsi} />
                 </div>
-              )}
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <p className="text-xs text-gray-500 mb-0.5">MACD</p>
+                  <span className={ind.macd >= 0 ? "text-green-400" : "text-red-400"}>
+                    {ind.macd?.toFixed(2) ?? "–"}
+                  </span>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <p className="text-xs text-gray-500 mb-0.5">MA50</p>
+                  <span className="text-gray-300">{ind.ma50?.toFixed(2) ?? "–"}</span>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <p className="text-xs text-gray-500 mb-0.5">MA200</p>
+                  <span className="text-gray-300">{ind.ma200?.toFixed(2) ?? "–"}</span>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <p className="text-xs text-gray-500 mb-0.5">ATR</p>
+                  <span className="text-gray-300">{ind.atr?.toFixed(2) ?? "–"}</span>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-2 text-center">
+                  <p className="text-xs text-gray-500 mb-0.5">Volym ×</p>
+                  <span className={ind.volume_ratio >= 1.5 ? "text-green-400" : "text-gray-300"}>
+                    {ind.volume_ratio?.toFixed(1) ?? "–"}×
+                  </span>
+                </div>
+              </div>
 
-              {/* Buy reasons */}
-              {live?.buy_reasons?.length > 0 && (
+              {/* Senaste signalskäl */}
+              {reasons.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {live.buy_reasons.map((r: string, i: number) => (
+                  {reasons.map((r: string, i: number) => (
                     <span
                       key={i}
                       className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full"
@@ -165,11 +190,11 @@ export default async function StocksPage() {
                 </div>
               )}
 
-              {/* SL / TP */}
-              {live?.stop_loss && (
+              {/* SL / TP från senaste signal */}
+              {sig?.stop_loss_price && (
                 <div className="flex gap-4 mt-3 text-xs text-gray-500">
-                  <span>SL: <span className="text-red-400">{live.stop_loss?.toFixed(2)} kr</span></span>
-                  <span>TP: <span className="text-green-400">{live.take_profit?.toFixed(2)} kr</span></span>
+                  <span>SL: <span className="text-red-400">{sig.stop_loss_price?.toFixed(2)} kr</span></span>
+                  <span>TP: <span className="text-green-400">{sig.take_profit_price?.toFixed(2)} kr</span></span>
                 </div>
               )}
             </div>
