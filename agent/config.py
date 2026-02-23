@@ -12,7 +12,7 @@ TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 
 # Google Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemma-3-27b-it")
 
 # Ntfy
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "mike_stock_73")
