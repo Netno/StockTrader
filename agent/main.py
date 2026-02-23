@@ -373,7 +373,7 @@ async def fetch_news_for_ticker(ticker: str):
         return {"error": f"Inga nyheter hittades for {ticker}."}
 
     saved = []
-    for item in news_list:
+    for item in news_list[:1]:  # max 1 Gemini-anrop per manuellt anrop
         sentiment = await analyze_sentiment(ticker, item["headline"])
         await db.save_news(
             ticker=ticker,
@@ -478,9 +478,18 @@ async def trigger_scan():
     return {"ok": True, "message": "Skanning startad."}
 
 
+def _is_trading_hours() -> bool:
+    """Return True if current Stockholm time is Mon–Fri 09:00–17:30."""
+    from datetime import datetime, timezone, timedelta
+    now_swe = datetime.now(timezone(timedelta(hours=1)))  # CET (vinter)
+    return now_swe.weekday() < 5 and 9 <= now_swe.hour < 18
+
+
 @app.post("/api/run")
 async def trigger_trading_loop():
     """Manually trigger a full trading loop iteration for all watchlist tickers."""
+    if not _is_trading_hours():
+        return {"ok": False, "message": "Utanför handelstid (mån–fre 09:00–17:30). Inget körs."}
     from scheduler import trading_loop
     await trading_loop()
     return {"ok": True, "message": "Trading loop kord for alla bevakade aktier."}
@@ -489,6 +498,8 @@ async def trigger_trading_loop():
 @app.post("/api/run/{ticker}")
 async def trigger_single_ticker(ticker: str, background_tasks: BackgroundTasks):
     """Manually run process_ticker for a single ticker (full DB writes + signal generation)."""
+    if not _is_trading_hours():
+        return {"ok": False, "message": "Utanför handelstid (mån–fre 09:00–17:30). Inget körs."}
     from scheduler import process_ticker
     from db.supabase_client import get_watchlist
     ticker = ticker.upper()
