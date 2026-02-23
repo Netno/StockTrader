@@ -182,55 +182,101 @@ export default async function StockDetailPage({
 
       {/* Tab: Signaler */}
       {activeTab === "signaler" && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <>
           {signals.length === 0 ? (
-            <p className="p-6 text-gray-500 text-sm">Inga signaler för {ticker} än.</p>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl">
+              <p className="p-6 text-gray-500 text-sm">Inga signaler för {ticker} än.</p>
+            </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 border-b border-gray-800">
-                  <th className="p-4">Tid</th>
-                  <th className="p-4">Signal</th>
-                  <th className="p-4">Pris</th>
-                  <th className="p-4">Antal</th>
-                  <th className="p-4">Score</th>
-                  <th className="p-4">Confidence</th>
-                  <th className="p-4">SL / TP</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-800">
+                      <th className="p-4">Tid</th>
+                      <th className="p-4">Signal</th>
+                      <th className="p-4">Pris</th>
+                      <th className="p-4">Antal</th>
+                      <th className="p-4">Score</th>
+                      <th className="p-4">Confidence</th>
+                      <th className="p-4">SL / TP</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {signals.map((s: any) => (
+                      <tr key={s.id} className="hover:bg-gray-800/30">
+                        <td className="p-4 text-gray-400 whitespace-nowrap">
+                          {new Date(s.created_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.signal_type === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                            {s.signal_type === "BUY" ? "KÖP" : "SÄLJ"}
+                          </span>
+                        </td>
+                        <td className="p-4">{s.price?.toFixed(2)} kr</td>
+                        <td className="p-4">{s.quantity}</td>
+                        <td className="p-4">{s.score}p</td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 bg-gray-800 rounded-full h-1.5">
+                              <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${s.confidence}%` }} />
+                            </div>
+                            <span className="text-gray-400">{s.confidence?.toFixed(0)}%</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-xs">
+                          <span className="text-red-400">{s.stop_loss_price?.toFixed(2)}</span>
+                          <span className="text-gray-600 mx-1">/</span>
+                          <span className="text-green-400">{s.take_profit_price?.toFixed(2)}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile card list */}
+              <div className="md:hidden space-y-3">
                 {signals.map((s: any) => (
-                  <tr key={s.id} className="hover:bg-gray-800/30">
-                    <td className="p-4 text-gray-400 whitespace-nowrap">
-                      {new Date(s.created_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </td>
-                    <td className="p-4">
+                  <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                    {/* Row 1: badge + time */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.signal_type === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
                         {s.signal_type === "BUY" ? "KÖP" : "SÄLJ"}
                       </span>
-                    </td>
-                    <td className="p-4">{s.price?.toFixed(2)} kr</td>
-                    <td className="p-4">{s.quantity}</td>
-                    <td className="p-4">{s.score}p</td>
-                    <td className="p-4">
+                      <span className="text-xs text-gray-500">
+                        {new Date(s.created_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+
+                    {/* Row 2: price + quantity */}
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-lg font-bold">{s.price?.toFixed(2)} kr</span>
+                      <span className="text-xs text-gray-400">{s.quantity} st</span>
+                    </div>
+
+                    {/* Row 3: score + confidence bar + SL/TP */}
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{s.score}p</span>
                         <div className="w-16 bg-gray-800 rounded-full h-1.5">
                           <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${s.confidence}%` }} />
                         </div>
-                        <span className="text-gray-400">{s.confidence?.toFixed(0)}%</span>
+                        <span className="text-xs text-gray-400">{s.confidence?.toFixed(0)}%</span>
                       </div>
-                    </td>
-                    <td className="p-4 text-xs">
-                      <span className="text-red-400">{s.stop_loss_price?.toFixed(2)}</span>
-                      <span className="text-gray-600 mx-1">/</span>
-                      <span className="text-green-400">{s.take_profit_price?.toFixed(2)}</span>
-                    </td>
-                  </tr>
+                      <div className="text-xs">
+                        <span className="text-red-400">SL {s.stop_loss_price?.toFixed(2) ?? "–"}</span>
+                        <span className="text-gray-600 mx-1">/</span>
+                        <span className="text-green-400">TP {s.take_profit_price?.toFixed(2) ?? "–"}</span>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </>
           )}
-        </div>
+        </>
       )}
 
       {/* Tab: Nyheter */}

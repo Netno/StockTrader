@@ -18,8 +18,8 @@ export default async function SignalsPage() {
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Signaler</h1>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 text-sm">
+      {/* Stats — 1 col on mobile, 3 cols on sm+ */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center">
           <p className="text-gray-500 mb-1">Totalt</p>
           <p className="text-2xl font-bold">{signals.length}</p>
@@ -110,7 +110,7 @@ export default async function SignalsPage() {
         </div>
       )}
 
-      {/* All signals table */}
+      {/* All signals — desktop table */}
       <div className="hidden md:block bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -182,6 +182,70 @@ export default async function SignalsPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* All signals — mobile card list */}
+      <div className="md:hidden space-y-3">
+        {signals.length === 0 && (
+          <p className="text-center text-gray-500 text-sm py-6">Inga signaler än.</p>
+        )}
+        {signals.map((s: any) => (
+          <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+            {/* Row 1: ticker + badge + time */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/dashboard/stocks/${s.ticker}`}
+                  className="font-bold text-white hover:text-blue-400 transition"
+                >
+                  {s.ticker}
+                </Link>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                  s.signal_type === "BUY"
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-red-500/20 text-red-400"
+                }`}>
+                  {s.signal_type === "BUY" ? "KÖP" : "SÄLJ"}
+                </span>
+              </div>
+              <span className="text-xs text-gray-500">
+                {new Date(s.created_at).toLocaleString("sv-SE", {
+                  day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                })}
+              </span>
+            </div>
+
+            {/* Row 2: price + quantity */}
+            <div className="flex items-baseline gap-3">
+              <span className="text-lg font-bold">{s.price?.toFixed(2)} kr</span>
+              <span className="text-xs text-gray-400">{s.quantity} st</span>
+            </div>
+
+            {/* Row 3: score bar + SL/TP */}
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <div className="w-16 bg-gray-800 rounded-full h-1.5">
+                  <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${s.confidence}%` }} />
+                </div>
+                <span className="text-xs text-gray-400">{s.score}p</span>
+              </div>
+              <div className="text-xs">
+                <span className="text-red-400">SL {s.stop_loss_price?.toFixed(2) ?? "–"}</span>
+                <span className="text-gray-600 mx-1">/</span>
+                <span className="text-green-400">TP {s.take_profit_price?.toFixed(2) ?? "–"}</span>
+              </div>
+            </div>
+
+            {/* Row 4: action */}
+            {s.signal_type === "BUY" ? (
+              <SignalActions signalId={s.id} status={s.status ?? "pending"} />
+            ) : (
+              <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
+                Sälj på Avanza
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

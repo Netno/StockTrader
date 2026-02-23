@@ -53,8 +53,8 @@ export default async function HistoryPage() {
         </div>
       </div>
 
-      {/* Trades table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      {/* Trades — desktop table */}
+      <div className="hidden md:block bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-gray-500 border-b border-gray-800">
@@ -125,6 +125,65 @@ export default async function HistoryPage() {
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Trades — mobile card list */}
+      <div className="md:hidden space-y-3">
+        {trades.length === 0 && (
+          <p className="text-center text-gray-500 text-sm py-6">Inga avslutade affärer än.</p>
+        )}
+        {trades.map((t: any) => {
+          const pnl = t.pnl_kr ?? 0;
+          const pnlPct = t.pnl_pct ?? 0;
+          return (
+            <div key={t.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+              {/* Row 1: ticker + P&L */}
+              <div className="flex items-start justify-between gap-2">
+                <Link
+                  href={`/dashboard/stocks/${t.ticker}`}
+                  className="font-bold text-white hover:text-blue-400 transition text-base"
+                >
+                  {t.ticker}
+                </Link>
+                <div className="text-right">
+                  <p className={`font-semibold ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    {pnl >= 0 ? "+" : ""}{pnl.toFixed(0)} kr
+                  </p>
+                  <p className={`text-xs ${pnlPct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+
+              {/* Row 2: prices + quantity */}
+              <div className="flex items-center gap-4 text-sm text-gray-300">
+                <span>In: <span className="text-white font-medium">{t.entry_price?.toFixed(2)} kr</span></span>
+                <span className="text-gray-600">→</span>
+                <span>Ut: <span className="text-white font-medium">{t.exit_price?.toFixed(2) ?? "–"}</span></span>
+                <span className="text-gray-500 text-xs ml-auto">{t.quantity} st</span>
+              </div>
+
+              {/* Row 3: dates + close reason */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-xs text-gray-500 space-y-0.5">
+                  <p>Öppnad: {new Date(t.opened_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  {t.closed_at && (
+                    <p>Stängd: {new Date(t.closed_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  )}
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  t.close_reason === "stop_loss"
+                    ? "bg-red-500/20 text-red-400"
+                    : t.close_reason === "take_profit"
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-gray-700 text-gray-400"
+                }`}>
+                  {closeReasonLabel[t.close_reason] ?? t.close_reason ?? "–"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

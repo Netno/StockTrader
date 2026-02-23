@@ -60,7 +60,7 @@ export default async function DashboardPage() {
       <h1 className="text-xl font-bold">Dashboard</h1>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Tillgänglig kassa"
           value={`${(summaryData?.available_cash ?? 0).toFixed(0)} kr`}
