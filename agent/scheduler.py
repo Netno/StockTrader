@@ -314,20 +314,21 @@ async def weekly_scan():
 
 
 def setup_scheduler() -> AsyncIOScheduler:
+    tz = "Europe/Stockholm"
     # 08:30 – Morgonkontroll
-    scheduler.add_job(morning_check, CronTrigger(day_of_week="mon-fri", hour=8, minute=30))
+    scheduler.add_job(morning_check, CronTrigger(day_of_week="mon-fri", hour=8, minute=30, timezone=tz))
     # 08:45 – Morgonsummering
-    scheduler.add_job(morning_summary, CronTrigger(day_of_week="mon-fri", hour=8, minute=45))
+    scheduler.add_job(morning_summary, CronTrigger(day_of_week="mon-fri", hour=8, minute=45, timezone=tz))
     # 09:00–17:28 – Handelsloop var 2:a minut
     scheduler.add_job(
         trading_loop,
-        CronTrigger(day_of_week="mon-fri", hour="9-17", minute="*/2"),
+        CronTrigger(day_of_week="mon-fri", hour="9-17", minute="*/2", timezone=tz),
     )
     # 17:35 – Kvallssummering
-    scheduler.add_job(evening_summary, CronTrigger(day_of_week="mon-fri", hour=17, minute=35))
+    scheduler.add_job(evening_summary, CronTrigger(day_of_week="mon-fri", hour=17, minute=35, timezone=tz))
     # 17:45 – Daglig skanning av hela universumet
-    scheduler.add_job(daily_scan, CronTrigger(day_of_week="mon-fri", hour=17, minute=45))
+    scheduler.add_job(daily_scan, CronTrigger(day_of_week="mon-fri", hour=17, minute=45, timezone=tz))
     # Sondag 18:00 – veckovis aktiesskanning
-    scheduler.add_job(weekly_scan, CronTrigger(day_of_week="sun", hour=18, minute=0))
+    scheduler.add_job(weekly_scan, CronTrigger(day_of_week="sun", hour=18, minute=0, timezone=tz))
 
     return scheduler
