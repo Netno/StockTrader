@@ -169,6 +169,7 @@ export default function AiStatsChart() {
               fill="#22c55e"
               radius={[2, 2, 0, 0]}
               stackId="calls"
+              activeBar={false}
             />
             <Bar
               dataKey="calls_rate_limited"
@@ -176,6 +177,7 @@ export default function AiStatsChart() {
               fill="#f97316"
               radius={[0, 0, 0, 0]}
               stackId="calls"
+              activeBar={false}
             />
             <Bar
               dataKey="calls_failed"
@@ -183,6 +185,7 @@ export default function AiStatsChart() {
               fill="#ef4444"
               radius={[2, 2, 0, 0]}
               stackId="calls"
+              activeBar={false}
             />
           </>
         );
@@ -195,6 +198,7 @@ export default function AiStatsChart() {
               fill="#3b82f6"
               radius={[2, 2, 0, 0]}
               stackId="tokens"
+              activeBar={false}
             />
             <Bar
               dataKey="output_tokens"
@@ -202,6 +206,7 @@ export default function AiStatsChart() {
               fill="#8b5cf6"
               radius={[2, 2, 0, 0]}
               stackId="tokens"
+              activeBar={false}
             />
           </>
         );
@@ -213,12 +218,14 @@ export default function AiStatsChart() {
               name="Cache-träffar"
               fill="#06b6d4"
               radius={[2, 2, 0, 0]}
+              activeBar={false}
             />
             <Bar
               dataKey="calls_ok"
               name="API-anrop"
               fill="#6366f1"
               radius={[2, 2, 0, 0]}
+              activeBar={false}
             />
           </>
         );
@@ -229,6 +236,7 @@ export default function AiStatsChart() {
             name="Total latency"
             fill="#eab308"
             radius={[2, 2, 0, 0]}
+            activeBar={false}
           />
         );
     }
@@ -345,7 +353,7 @@ export default function AiStatsChart() {
           <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
           <Tooltip
             content={<CustomTooltip />}
-            cursor={{ fill: "rgba(59, 130, 246, 0.08)" }}
+            cursor={false}
           />
           <Legend
             wrapperStyle={{ fontSize: "11px", color: "#9ca3af" }}
