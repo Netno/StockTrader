@@ -188,7 +188,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
 
     # Hämta nyheter (cachas 30 min — billigt)
     # Kör Gemini-sentimentanalys BARA om teknisk signal redan är lovande
-    _SENTIMENT_GATE = 35  # poäng utan sentiment för att motivera Gemini-anrop
+    _SENTIMENT_GATE = 20  # poäng utan sentiment för att motivera AI-anrop
     needs_sentiment = in_position or pre_buy_score >= _SENTIMENT_GATE or pre_sell_score >= _SENTIMENT_GATE
 
     news_list = await fetch_news(ticker, company)
