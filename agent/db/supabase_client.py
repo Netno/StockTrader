@@ -290,7 +290,7 @@ def upsert_ai_stats(stats: dict):
         "total_latency_s": stats.get("total_latency_s", 0.0),
         "by_type": stats.get("by_type", {}),
         "updated_at": _now(),
-    }).execute()
+    }, on_conflict="date,hour").execute()
 
 
 def load_ai_stats_for_date_hour(date_str: str, hour: int) -> dict | None:
