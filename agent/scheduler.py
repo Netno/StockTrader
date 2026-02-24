@@ -40,12 +40,22 @@ _description_cache: dict[str, tuple[str, float]] = {}
 _DESCRIPTION_TTL = 2 * 3600  # 2h — återanvänd samma beskrivning för upprepade signaler
 
 
-def _should_save_news(ticker: str, headline: str) -> bool:
-    """Returnerar True (och markerar som sparad) om rubriken inte sparats senaste 24h."""
+async def _should_save_news(ticker: str, headline: str) -> bool:
+    """Returnerar True om rubriken inte sparats tidigare.
+    Kontrollerar först in-memory cache (snabb), sedan databasen (restart-säker)."""
     key = f"{ticker}:{headline}"
     now = _time.monotonic()
     if _news_save_cache.get(key, 0) > now:
         return False
+    # DB-kontroll — överlever Railway-restarter och deploy-overlap
+    try:
+        from db.supabase_client import get_client
+        result = get_client().table("stock_news").select("id").eq("ticker", ticker).eq("headline", headline).limit(1).execute()
+        if result.data:
+            _news_save_cache[key] = now + _NEWS_SAVE_TTL  # cache för att slippa upprepad DB-lookup
+            return False
+    except Exception:
+        pass  # vid DB-fel, tillåt insert (hellre dubblett än att missa nyheter)
     _news_save_cache[key] = now + _NEWS_SAVE_TTL
     return True
 
@@ -187,7 +197,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
     if needs_sentiment:
         for item in news_list[:1]:  # max 1 Gemini-anrop per ticker per loop
             sentiment = await analyze_sentiment(ticker, item["headline"])
-            if _should_save_news(ticker, item["headline"]):
+            if await _should_save_news(ticker, item["headline"]):
                 await db.save_news(
                     ticker=ticker,
                     headline=item["headline"],
