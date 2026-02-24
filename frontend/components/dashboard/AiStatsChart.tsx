@@ -329,17 +329,18 @@ export default function AiStatsChart() {
       )}
 
       {/* Chart */}
-      <ResponsiveContainer width="100%" height={240}>
-        <BarChart
-          data={chartData}
-          margin={{ top: 4, right: 0, left: -20, bottom: 4 }}
-          style={{ backgroundColor: "#111827", borderRadius: "8px" }}
-        >
+      <div className="rounded-lg bg-gray-900">
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart
+            data={chartData}
+            margin={{ top: 4, right: 0, left: -20, bottom: 4 }}
+            style={{ backgroundColor: "#111827", borderRadius: "8px" }}
+          >
           <CartesianGrid
             strokeDasharray="3 3"
             stroke="#1f2937"
             fill="#111827"
-            fillOpacity={0.8}
+            fillOpacity={1}
           />
           <XAxis
             dataKey="label"
@@ -351,17 +352,15 @@ export default function AiStatsChart() {
             height={30}
           />
           <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
-          <Tooltip
-            content={<CustomTooltip />}
-            cursor={false}
-          />
+          <Tooltip content={<CustomTooltip />} cursor={false} />
           <Legend
             wrapperStyle={{ fontSize: "11px", color: "#9ca3af" }}
             iconSize={10}
           />
-          {renderBars()}
-        </BarChart>
-      </ResponsiveContainer>
+            {renderBars()}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
