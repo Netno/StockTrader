@@ -1,4 +1,6 @@
+import hashlib
 import httpx
+import uuid as _uuid
 from datetime import datetime, timezone
 from config import NTFY_URL, PAPER_TRADING, FRONTEND_URL
 
@@ -137,24 +139,23 @@ async def _send(
 
 async def _log(notif_type: str, title: str, message: str, ticker: str = None):
     try:
-        from datetime import timedelta
         from db.supabase_client import get_client
         db = get_client()
 
-        # Dedup: skip if same type was already logged within the last 5 minutes
-        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
-        query = db.table("stock_notifications").select("id").eq("type", notif_type).gte("created_at", cutoff)
-        query = query.eq("ticker", ticker) if ticker else query.is_("ticker", None)
-        if query.execute().data:
-            print(f"Notif dedup: {notif_type} redan skickad nyligen, hoppar over.")
-            return
+        # Deterministiskt ID baserat på typ + ticker + timme.
+        # Två Railway-instanser som kör simultant (deploy-overlap) genererar samma ID
+        # → Supabase upsert på primary key är atomisk → bara en rad sparas.
+        hour_key = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+        dedup_str = f"{notif_type}:{ticker or 'portfolio'}:{hour_key}"
+        dedup_id = str(_uuid.UUID(hashlib.md5(dedup_str.encode()).hexdigest()))
 
-        db.table("stock_notifications").insert({
+        db.table("stock_notifications").upsert({
+            "id": dedup_id,
             "type": notif_type,
             "title": title,
             "message": message,
             "ticker": ticker,
             "created_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
+        }, on_conflict="id").execute()
     except Exception as e:
         print(f"Notification log error: {e}")
