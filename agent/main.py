@@ -684,3 +684,65 @@ async def insert_test_signal():
         "quantity": quantity,
         "message": "Testsignal skapad — ga till /api/signals eller frontenden for att bekrafta.",
     }
+
+
+@app.get("/api/test-ai-stats-write")
+async def test_ai_stats_write():
+    """Test writing to stock_ai_stats table — returns success or exact error."""
+    from db.supabase_client import get_client, upsert_ai_stats
+    errors = []
+    # Test 1: Direct read to verify table access
+    try:
+        result = get_client().table("stock_ai_stats").select("*").limit(1).execute()
+        read_ok = True
+        read_rows = len(result.data or [])
+    except Exception as e:
+        read_ok = False
+        read_rows = 0
+        errors.append(f"READ failed: {type(e).__name__}: {e}")
+
+    # Test 2: Try upsert
+    test_stats = {
+        "date": "2099-01-01",
+        "hour": 0,
+        "model": "test",
+        "calls_ok": 1,
+        "calls_failed": 0,
+        "calls_rate_limited": 0,
+        "cache_hits": 0,
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_latency_s": 0.5,
+        "by_type": {"test": 1},
+    }
+    try:
+        upsert_ai_stats(test_stats)
+        write_ok = True
+    except Exception as e:
+        write_ok = False
+        errors.append(f"WRITE failed: {type(e).__name__}: {e}")
+
+    # Test 3: Verify the row was written
+    verify_ok = False
+    if write_ok:
+        try:
+            result = get_client().table("stock_ai_stats").select("*").eq("date", "2099-01-01").execute()
+            verify_ok = len(result.data or []) > 0
+            if not verify_ok:
+                errors.append("VERIFY failed: Row was not saved (RLS blocking writes?)")
+            # Clean up test row
+            get_client().table("stock_ai_stats").delete().eq("date", "2099-01-01").execute()
+        except Exception as e:
+            errors.append(f"VERIFY failed: {type(e).__name__}: {e}")
+
+    return {
+        "read_ok": read_ok,
+        "read_rows": read_rows,
+        "write_ok": write_ok,
+        "verify_ok": verify_ok,
+        "errors": errors,
+        "diagnosis": "ALL OK" if (read_ok and write_ok and verify_ok) else
+                     "RLS policy saknas - kor CREATE POLICY SQL i Supabase" if (read_ok and write_ok and not verify_ok) else
+                     "Tabellen saknas eller schema-fel" if not read_ok else
+                     "Write error - se errors",
+    }

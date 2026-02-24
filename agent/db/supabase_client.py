@@ -1,6 +1,9 @@
+import logging
 from datetime import datetime, timezone
 from supabase import create_client, Client
 from config import SUPABASE_URL, SUPABASE_KEY, PAPER_BALANCE
+
+logger = logging.getLogger(__name__)
 
 _client: Client = None
 
@@ -277,7 +280,7 @@ async def get_portfolio_summary(initial_balance: float = PAPER_BALANCE) -> tuple
 
 def upsert_ai_stats(stats: dict):
     """Upsert this hour's AI stats to DB (stock_ai_stats table)."""
-    get_client().table("stock_ai_stats").upsert({
+    row = {
         "date": stats["date"],
         "hour": stats.get("hour", 0),
         "model": stats.get("model", ""),
@@ -290,7 +293,17 @@ def upsert_ai_stats(stats: dict):
         "total_latency_s": stats.get("total_latency_s", 0.0),
         "by_type": stats.get("by_type", {}),
         "updated_at": _now(),
-    }, on_conflict="date,hour").execute()
+    }
+    try:
+        result = get_client().table("stock_ai_stats").upsert(
+            row, on_conflict="date,hour"
+        ).execute()
+        logger.info(f"[AI Stats DB] Upsert OK för {stats['date']} H{stats.get('hour', 0)}: "
+                     f"{stats.get('calls_ok', 0)} anrop, {len(result.data or [])} rader")
+    except Exception as e:
+        logger.error(f"[AI Stats DB] Upsert MISSLYCKADES för {stats['date']} H{stats.get('hour', 0)}: "
+                     f"{type(e).__name__}: {e}")
+        raise
 
 
 def load_ai_stats_for_date_hour(date_str: str, hour: int) -> dict | None:
