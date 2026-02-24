@@ -16,9 +16,9 @@ _NEWS_TTL = 30 * 60  # 30 minuter
 async def fetch_news(ticker: str, company_name: str, max_items: int = 5) -> List[Dict]:
     """Fetch latest news for a ticker via Google News RSS (cached 30 min)."""
     cache_key = (ticker, company_name)
-    entry = _news_cache.get(cache_key)
-    if entry and time.monotonic() < entry[1]:
-        return entry[0]
+    cached_entry = _news_cache.get(cache_key)
+    if cached_entry and time.monotonic() < cached_entry[1]:
+        return cached_entry[0]
 
     query = f"{company_name} aktie".replace(" ", "+")
     url = GOOGLE_NEWS_RSS.format(query=query)

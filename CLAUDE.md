@@ -1,9 +1,11 @@
 # AKTIEMOTOR — Projektinstruktioner
 
 ## Vad systemet är
+
 En **rekommendationsmotor** för svenska aktier. Agenten analyserar marknaden och skickar köp/säljrekommendationer. Användaren agerar alltid manuellt på Avanza. Systemet exekverar aldrig affärer automatiskt.
 
 Flödet:
+
 1. KÖP-signal → push-notis → användaren köper på Avanza → bekräftar i appen
 2. SÄLJ-signal → push-notis → användaren säljer på Avanza → klickar Stäng i appen
 
@@ -13,16 +15,17 @@ Flödet:
 
 ## Arkitektur
 
-| Komponent | Teknologi | Plattform |
-|-----------|-----------|-----------|
-| Agent (backend) | Python FastAPI + APScheduler | Railway (port 8080) |
-| Frontend | Next.js 16 App Router | Vercel |
-| Databas | Supabase (PostgreSQL) | Supabase |
-| AI-analys | Google Gemini 2.5 Flash | Via google-genai |
-| Push-notiser | ntfy.sh | Topic: mike_stock_73 |
-| Prisdata | Yahoo Finance v8 API | Via Vercel-proxy (Railway IPs blockerade) |
+| Komponent       | Teknologi                    | Plattform                                 |
+| --------------- | ---------------------------- | ----------------------------------------- |
+| Agent (backend) | Python FastAPI + APScheduler | Railway (port 8080)                       |
+| Frontend        | Next.js 16 App Router        | Vercel                                    |
+| Databas         | Supabase (PostgreSQL)        | Supabase                                  |
+| AI-analys       | Google Gemini 2.5 Flash      | Via google-genai                          |
+| Push-notiser    | ntfy.sh                      | Topic: mike_stock_73                      |
+| Prisdata        | Yahoo Finance v8 API         | Via Vercel-proxy (Railway IPs blockerade) |
 
 ### Viktigt om deployment
+
 - `git push` triggar Railway-deploy automatiskt
 - `git push` triggar Vercel **bara om filer under `frontend/` ändrats** (ignoreCommand konfigurerat)
 - Vercel har deploymentgräns — pusha inte frontend i onödan
@@ -31,6 +34,7 @@ Flödet:
 - Agent-URL lokalt: pekar på Railway (`NEXT_PUBLIC_AGENT_URL` i `.env.local`)
 
 ### Miljövariabler
+
 - `agent/.env` — alla agent-nycklar (Supabase, Gemini, ntfy, FRONTEND_URL)
 - `frontend/.env.local` — frontend-nycklar (Supabase, NextAuth, Google OAuth, agent-URL)
 
@@ -39,6 +43,7 @@ Flödet:
 ## Backend (agent/)
 
 ### Struktur
+
 ```
 agent/
   main.py          — FastAPI endpoints
@@ -60,6 +65,7 @@ agent/
 ```
 
 ### Schemalagda jobb
+
 - 08:30 — Morgonkontroll (återställ räknare)
 - 08:45 — Morgonsummering (push-notis)
 - 09:00–17:28 — Trading loop var 2:a minut (köp/säljsignaler)
@@ -68,12 +74,14 @@ agent/
 - Söndag 18:00 — Veckovis skanning
 
 ### Signallogik
+
 - **KÖP**: score ≥ 60 → sparas som `pending` → push-notis → användaren bekräftar
-- **SÄLJ**: score ≥ 60 eller SL/TP nått → push-notis → användaren agerar manuellt
+- **SÄLJ**: score ≥ 55 (baserat på teknisk analys + P&L) → push-notis → användaren agerar manuellt
 - **Rotation**: om max positioner nått och ny kandidat score > svagaste + 15 → säljsignal på svagaste
 - Ingen auto-execution — användaren agerar alltid
 
 ### Kodstandard backend
+
 - Asynkront (async/await) genomgående
 - Felhantering med try/except och logger.warning/error
 - Inga brytande förändringar mot Supabase-schemat utan genomtänkt migration
@@ -84,6 +92,7 @@ agent/
 ## Frontend (frontend/)
 
 ### Teknologi
+
 - Next.js 16 App Router, React 19, TypeScript
 - Tailwind CSS v4
 - Supabase JS-klient
@@ -91,6 +100,7 @@ agent/
 - Recharts för grafer
 
 ### Design & UX-principer
+
 - **Mörkt tema** genomgående (bg-gray-900, bg-gray-800, borders i gray-800)
 - **Mobilanpassat** — push-notiser öppnas på mobil, primära actions måste fungera på liten skärm
 - Sidebar dold på mobil (`hidden md:flex`)
@@ -100,6 +110,7 @@ agent/
 - Färgkoder: grönt = köp/vinst, rött = sälj/förlust, orange = varning/väntar
 
 ### Sidstruktur
+
 ```
 /dashboard           — Översikt, öppna positioner, portföljnotiser
 /dashboard/signals   — Köp/säljsignaler med bekräfta/neka
@@ -110,11 +121,13 @@ agent/
 ```
 
 ### API-kommunikation
+
 - `frontend/lib/api.ts` — alla anrop mot Railway-agenten
 - Supabase anropas direkt från frontend för notiser och portföljdata
 - Vercel-proxy `/api/market/[ticker]` — hämtar prisdata från Yahoo Finance
 
 ### Kodstandard frontend
+
 - Server Components som default, `"use client"` bara när interaktivitet krävs
 - `revalidate` satt per sida (15–30 sekunder typiskt)
 - Inga nya npm-paket utan god anledning (Vercel build-gräns)
@@ -134,6 +147,7 @@ agent/
 ---
 
 ## Testning
+
 1. Starta frontend lokalt: `npm run dev -- -p 4000` i `frontend/`
 2. Agenten körs på Railway (produktionsmiljö)
 3. Testa signal-flödet: `POST /api/test-signal` → bekräfta i appen

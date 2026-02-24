@@ -232,14 +232,33 @@ async def add_deposit(amount: float, note: str = "") -> str | None:
 
 
 async def get_portfolio_summary(initial_balance: float = PAPER_BALANCE) -> tuple[float, float]:
-    """Return (current_value, pct_change) based on open confirmed trades."""
+    """Return (current_value, pct_change) based on open confirmed trades with live prices."""
     try:
         deposited = await get_total_deposited()
     except Exception:
         deposited = initial_balance
     trades = await get_open_trades()
-    invested = sum(t["total_value"] for t in trades)
-    cash = max(0.0, deposited - invested)
-    current_value = cash + invested
+    invested_at_cost = sum(t["total_value"] for t in trades)
+
+    # Use live prices for market value when possible
+    market_value = 0.0
+    for t in trades:
+        try:
+            from data.yahoo_client import get_current_price
+            current = await get_current_price(t["ticker"])
+            live_price = current.get("price") or t["entry_price"]
+        except Exception:
+            live_price = t["entry_price"]
+        market_value += live_price * t["quantity"]
+
+    # Realized P&L from closed trades
+    try:
+        closed = get_client().table("stock_trades").select("pnl_kr").eq("status", "closed").execute()
+        realized_pnl = sum(r["pnl_kr"] or 0 for r in (closed.data or []))
+    except Exception:
+        realized_pnl = 0.0
+
+    cash = max(0.0, deposited + realized_pnl - invested_at_cost)
+    current_value = cash + market_value
     pct = ((current_value - deposited) / deposited) * 100 if deposited else 0.0
     return round(current_value, 2), round(pct, 2)

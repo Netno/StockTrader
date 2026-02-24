@@ -7,10 +7,10 @@ export const revalidate = 120;
 
 const strategyLabel: Record<string, string> = {
   trend_following: "Trendföljning",
-  mean_reversion:  "Mean reversion",
-  news_driven:     "Nyhetsdriven",
-  breakout:        "Breakout",
-  cyclical_trend:  "Cyklisk trend",
+  mean_reversion: "Mean reversion",
+  news_driven: "Nyhetsdriven",
+  breakout: "Breakout",
+  cyclical_trend: "Cyklisk trend",
 };
 
 function RsiBadge({ rsi }: { rsi?: number }) {
@@ -26,11 +26,14 @@ function RsiBadge({ rsi }: { rsi?: number }) {
 }
 
 function ScoreBadge({ score }: { score?: number }) {
-  if (score === undefined || score === null) return <span className="text-gray-600">–</span>;
+  if (score === undefined || score === null)
+    return <span className="text-gray-600">–</span>;
   const color =
-    score >= 60 ? "bg-green-500/20 text-green-400" :
-    score >= 40 ? "bg-amber-500/20 text-amber-400" :
-                  "bg-gray-700 text-gray-400";
+    score >= 60
+      ? "bg-green-500/20 text-green-400"
+      : score >= 40
+        ? "bg-amber-500/20 text-amber-400"
+        : "bg-gray-700 text-gray-400";
   return (
     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>
       {score}p {score >= 60 ? "🔔" : ""}
@@ -46,45 +49,62 @@ export default async function StocksPage() {
     .eq("active", true);
 
   const tickers = (watchlist ?? []).map((s: any) => s.ticker);
-  if (tickers.length === 0) return <div className="text-gray-500">Ingen watchlist.</div>;
-
-  const N = tickers.length * 4; // några rader per ticker för att säkert få senaste
+  if (tickers.length === 0)
+    return <div className="text-gray-500">Ingen watchlist.</div>;
 
   // 2. Hämta senaste indikatorer, priser och signaler i parallell från Supabase
   // INGA anrop till Railway eller Yahoo Finance — datan skrivs av trading-loopen var 2:a minut
-  const [{ data: allIndicators }, { data: allPrices }, { data: allSignals }] = await Promise.all([
-    supabase
-      .from("stock_indicators")
-      .select("*")
-      .in("ticker", tickers)
-      .order("timestamp", { ascending: false })
-      .limit(N),
-    supabase
-      .from("stock_prices")
-      .select("ticker, price, volume, timestamp")
-      .in("ticker", tickers)
-      .order("timestamp", { ascending: false })
-      .limit(N),
-    supabase
-      .from("stock_signals")
-      .select("ticker, score, reasons, stop_loss_price, take_profit_price, signal_type, created_at")
-      .in("ticker", tickers)
-      .order("created_at", { ascending: false })
-      .limit(N),
+  // Kör individuella queries per ticker med limit(1) för garanterat senaste per ticker
+  const [indicatorResults, priceResults, signalResults] = await Promise.all([
+    Promise.all(
+      tickers.map((t: string) =>
+        supabase
+          .from("stock_indicators")
+          .select("*")
+          .eq("ticker", t)
+          .order("timestamp", { ascending: false })
+          .limit(1)
+          .single(),
+      ),
+    ),
+    Promise.all(
+      tickers.map((t: string) =>
+        supabase
+          .from("stock_prices")
+          .select("ticker, price, volume, timestamp")
+          .eq("ticker", t)
+          .order("timestamp", { ascending: false })
+          .limit(1)
+          .single(),
+      ),
+    ),
+    Promise.all(
+      tickers.map((t: string) =>
+        supabase
+          .from("stock_signals")
+          .select(
+            "ticker, score, reasons, stop_loss_price, take_profit_price, signal_type, created_at",
+          )
+          .eq("ticker", t)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single(),
+      ),
+    ),
   ]);
 
-  // Plocka senaste rad per ticker
+  // Bygg map: ticker -> senaste rad
   const indMap: Record<string, any> = {};
-  for (const row of (allIndicators ?? [])) {
-    if (!indMap[row.ticker]) indMap[row.ticker] = row;
+  for (const { data } of indicatorResults) {
+    if (data) indMap[data.ticker] = data;
   }
   const priceMap: Record<string, any> = {};
-  for (const row of (allPrices ?? [])) {
-    if (!priceMap[row.ticker]) priceMap[row.ticker] = row;
+  for (const { data } of priceResults) {
+    if (data) priceMap[data.ticker] = data;
   }
   const sigMap: Record<string, any> = {};
-  for (const row of (allSignals ?? [])) {
-    if (!sigMap[row.ticker]) sigMap[row.ticker] = row;
+  for (const { data } of signalResults) {
+    if (data) sigMap[data.ticker] = data;
   }
 
   return (
@@ -93,16 +113,19 @@ export default async function StocksPage() {
 
       <div className="grid grid-cols-1 gap-4">
         {(watchlist ?? []).map((stock: any) => {
-          const ind     = indMap[stock.ticker]   ?? {};
+          const ind = indMap[stock.ticker] ?? {};
           const priceRow = priceMap[stock.ticker];
-          const sig     = sigMap[stock.ticker];
-          const price   = priceRow?.price;
-          const ma50    = ind.ma50;
+          const sig = sigMap[stock.ticker];
+          const price = priceRow?.price;
+          const ma50 = ind.ma50;
           const aboveMa50 = price && ma50 && price > ma50;
           const reasons: string[] = sig?.reasons ?? [];
 
           return (
-            <div key={stock.ticker} className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <div
+              key={stock.ticker}
+              className="bg-gray-900 border border-gray-800 rounded-xl p-5"
+            >
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 {/* Vänster: namn + strategi */}
                 <div>
@@ -135,7 +158,9 @@ export default async function StocksPage() {
                   {price && (
                     <div className="text-right">
                       <p className="text-xl font-bold">{price.toFixed(2)} kr</p>
-                      <p className={`text-xs ${aboveMa50 ? "text-green-400" : "text-red-400"}`}>
+                      <p
+                        className={`text-xs ${aboveMa50 ? "text-green-400" : "text-red-400"}`}
+                      >
                         {aboveMa50 ? "↑ över MA50" : "↓ under MA50"}
                       </p>
                     </div>
@@ -152,25 +177,41 @@ export default async function StocksPage() {
                 </div>
                 <div className="bg-gray-800/50 rounded-lg p-2 text-center">
                   <p className="text-xs text-gray-500 mb-0.5">MACD</p>
-                  <span className={ind.macd >= 0 ? "text-green-400" : "text-red-400"}>
+                  <span
+                    className={
+                      ind.macd >= 0 ? "text-green-400" : "text-red-400"
+                    }
+                  >
                     {ind.macd?.toFixed(2) ?? "–"}
                   </span>
                 </div>
                 <div className="bg-gray-800/50 rounded-lg p-2 text-center">
                   <p className="text-xs text-gray-500 mb-0.5">MA50</p>
-                  <span className="text-gray-300">{ind.ma50?.toFixed(2) ?? "–"}</span>
+                  <span className="text-gray-300">
+                    {ind.ma50?.toFixed(2) ?? "–"}
+                  </span>
                 </div>
                 <div className="bg-gray-800/50 rounded-lg p-2 text-center">
                   <p className="text-xs text-gray-500 mb-0.5">MA200</p>
-                  <span className="text-gray-300">{ind.ma200?.toFixed(2) ?? "–"}</span>
+                  <span className="text-gray-300">
+                    {ind.ma200?.toFixed(2) ?? "–"}
+                  </span>
                 </div>
                 <div className="bg-gray-800/50 rounded-lg p-2 text-center">
                   <p className="text-xs text-gray-500 mb-0.5">ATR</p>
-                  <span className="text-gray-300">{ind.atr?.toFixed(2) ?? "–"}</span>
+                  <span className="text-gray-300">
+                    {ind.atr?.toFixed(2) ?? "–"}
+                  </span>
                 </div>
                 <div className="bg-gray-800/50 rounded-lg p-2 text-center">
                   <p className="text-xs text-gray-500 mb-0.5">Volym ×</p>
-                  <span className={ind.volume_ratio >= 1.5 ? "text-green-400" : "text-gray-300"}>
+                  <span
+                    className={
+                      ind.volume_ratio >= 1.5
+                        ? "text-green-400"
+                        : "text-gray-300"
+                    }
+                  >
                     {ind.volume_ratio?.toFixed(1) ?? "–"}×
                   </span>
                 </div>
@@ -193,8 +234,18 @@ export default async function StocksPage() {
               {/* SL / TP från senaste signal */}
               {sig?.stop_loss_price && (
                 <div className="flex gap-4 mt-3 text-xs text-gray-500">
-                  <span>SL: <span className="text-red-400">{sig.stop_loss_price?.toFixed(2)} kr</span></span>
-                  <span>TP: <span className="text-green-400">{sig.take_profit_price?.toFixed(2)} kr</span></span>
+                  <span>
+                    SL:{" "}
+                    <span className="text-red-400">
+                      {sig.stop_loss_price?.toFixed(2)} kr
+                    </span>
+                  </span>
+                  <span>
+                    TP:{" "}
+                    <span className="text-green-400">
+                      {sig.take_profit_price?.toFixed(2)} kr
+                    </span>
+                  </span>
                 </div>
               )}
             </div>

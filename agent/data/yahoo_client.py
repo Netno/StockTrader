@@ -34,6 +34,7 @@ async def get_price_history(ticker: str, days: int = 220) -> pd.DataFrame:
     url = f"{FRONTEND_URL}/api/market/{ticker}?type=history&days={days}"
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url)
+        resp.raise_for_status()
 
     data = resp.json()
     if "error" in data or "data" not in data:
@@ -91,10 +92,18 @@ async def get_current_price(ticker: str) -> dict:
     url = f"{FRONTEND_URL}/api/market/{ticker}?type=price"
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(url)
+        resp.raise_for_status()
 
     data = resp.json()
+    raw_price = data.get("price")
+    price = float(raw_price) if raw_price is not None and raw_price != 0 else None
+    
+    if price is None or price <= 0:
+        # Returnera utan att cacha — Yahoo gav ogiltigt pris
+        return {"price": None, "volume": data.get("volume"), "change_pct": data.get("change_pct")}
+
     result = {
-        "price": float(data.get("price") or 0),
+        "price": price,
         "volume": data.get("volume"),
         "change_pct": data.get("change_pct"),
     }

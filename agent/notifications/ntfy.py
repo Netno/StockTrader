@@ -1,8 +1,11 @@
 import hashlib
+import logging
 import httpx
 import uuid as _uuid
 from datetime import datetime, timezone
 from config import NTFY_URL, PAPER_TRADING, FRONTEND_URL
+
+logger = logging.getLogger(__name__)
 
 
 async def send_buy_signal(
@@ -12,8 +15,6 @@ async def send_buy_signal(
     quantity: int,
     total: float,
     reasons: list,
-    stop_loss: float,
-    take_profit: float,
     confidence: float,
 ):
     mode = "PAPER " if PAPER_TRADING else ""
@@ -22,8 +23,6 @@ async def send_buy_signal(
         f"{mode}KOP {company} ({ticker})\n"
         f"Pris: {price:.2f} kr | Antal: {quantity} aktier (~{total:.0f} kr)\n"
         f"{reasons_str}\n"
-        f"Stop-loss: {stop_loss:.2f} kr\n"
-        f"Take-profit: {take_profit:.2f} kr\n"
         f"Confidence: {confidence:.0f}%"
     )
     signals_url = f"{FRONTEND_URL}/dashboard/signals" if FRONTEND_URL else None
@@ -131,7 +130,7 @@ async def _send(
                 timeout=10,
             )
         except Exception as e:
-            print(f"ntfy error: {e}")
+            logger.error(f"ntfy error: {e}")
 
     # Log to Supabase regardless of ntfy success
     await _log(notif_type, title, message, ticker)
@@ -158,4 +157,4 @@ async def _log(notif_type: str, title: str, message: str, ticker: str = None):
             "created_at": datetime.now(timezone.utc).isoformat(),
         }, on_conflict="id").execute()
     except Exception as e:
-        print(f"Notification log error: {e}")
+        logger.error(f"Notification log error: {e}")

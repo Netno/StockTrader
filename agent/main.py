@@ -53,7 +53,8 @@ async def get_summary():
     from data.yahoo_client import get_current_price
     from scheduler import open_positions
 
-    if _summary_cache.get("data") and _time.monotonic() < _summary_cache.get("expires", 0):
+    now_mono = _time.monotonic()
+    if _summary_cache.get("data") and now_mono < _summary_cache.get("expires", 0):
         return _summary_cache["data"]
 
     # Total deposited capital (sum of all deposits)
@@ -103,7 +104,6 @@ async def get_summary():
         "total_value": round(total_value, 2),           # The number that matters
         "total_pct": round(total_pct, 2),               # Return vs total deposited
     }
-    import time as _time
     _summary_cache["data"] = result
     _summary_cache["expires"] = _time.monotonic() + _SUMMARY_TTL
     return result
@@ -186,7 +186,8 @@ async def get_signals(limit: int = 50, status: str = None):
 async def confirm_signal(signal_id: str):
     """User confirms a pending BUY signal — creates a live trade."""
     from db.supabase_client import get_client, confirm_signal as db_confirm, save_trade
-    from scheduler import open_positions
+    from scheduler import open_positions, daily_trades
+    import scheduler as _scheduler
     import settings as _settings
 
     result = get_client().table("stock_signals").select("*").eq("id", signal_id).execute()
@@ -210,8 +211,8 @@ async def confirm_signal(signal_id: str):
         signal_id=signal_id,
         entry_price=signal["price"],
         quantity=signal["quantity"],
-        stop_loss=signal["stop_loss_price"],
-        take_profit=signal["take_profit_price"],
+        stop_loss=0.0,
+        take_profit=0.0,
     )
 
     await db_confirm(signal_id)
@@ -220,9 +221,9 @@ async def confirm_signal(signal_id: str):
         "trade_id": trade_id,
         "price": signal["price"],
         "quantity": signal["quantity"],
-        "stop_loss_price": signal["stop_loss_price"],
-        "take_profit_price": signal["take_profit_price"],
     }
+
+    _scheduler.daily_trades += 1
 
     return {"ok": True, "trade_id": trade_id, "ticker": signal["ticker"]}
 
@@ -336,7 +337,7 @@ async def test_ticker(ticker: str):
     """Manually run a full analysis for a ticker and return the result. No DB writes."""
     from data.yahoo_client import get_price_history, get_current_price
     from analysis.indicators import calculate_indicators
-    from analysis.decision_engine import score_buy_signal, score_sell_signal, calculate_stop_take
+    from analysis.decision_engine import score_buy_signal, score_sell_signal
 
     ticker = ticker.upper()
     df = await get_price_history(ticker, days=220)
@@ -351,7 +352,6 @@ async def test_ticker(ticker: str):
     price = current.get("price") or indicators["current_price"]
 
     buy_score, buy_reasons = score_buy_signal(ticker, indicators)
-    stop_loss, take_profit = calculate_stop_take(price, indicators)
 
     return {
         "ticker": ticker,
@@ -360,8 +360,6 @@ async def test_ticker(ticker: str):
         "indicators": indicators,
         "buy_score": buy_score,
         "buy_reasons": buy_reasons,
-        "stop_loss": stop_loss,
-        "take_profit": take_profit,
         "signal_threshold": 60,
         "would_trigger_buy": buy_score >= 60,
     }
@@ -492,8 +490,8 @@ async def trigger_scan():
 
 def _is_trading_hours() -> bool:
     """Return True if current Stockholm time is Mon–Fri 09:00–17:30."""
-    from datetime import datetime, timezone, timedelta
-    now_swe = datetime.now(timezone(timedelta(hours=1)))  # CET (vinter)
+    from zoneinfo import ZoneInfo
+    now_swe = datetime.now(ZoneInfo("Europe/Stockholm"))
     return now_swe.weekday() < 5 and 9 <= now_swe.hour < 18
 
 
@@ -530,8 +528,6 @@ async def send_test_notification():
         quantity=4,
         total=2128.80,
         reasons=["TEST: RSI 32 (oversalt)", "TEST: MACD crossover uppat"],
-        stop_loss=525.28,
-        take_profit=574.78,
         confidence=75.0,
     )
     return {"ok": True, "message": "Testnotis skickad till ntfy."}
@@ -542,13 +538,11 @@ async def insert_test_signal():
     """Insert a fake pending BUY signal for EVO to test the confirm/reject flow."""
     from db.supabase_client import save_signal, get_client
     from data.yahoo_client import get_current_price
-    from analysis.decision_engine import calculate_stop_take
 
     ticker = "EVO"
     current = await get_current_price(ticker)
     price = current.get("price") or 500.0
     quantity = 4
-    stop_loss, take_profit = calculate_stop_take(price, {"atr": price * 0.01})
 
     signal_id = await save_signal(
         ticker=ticker,
@@ -559,8 +553,8 @@ async def insert_test_signal():
         score=75,
         reasons=["TEST: RSI oversalt", "TEST: MACD crossover uppat"],
         indicators={"current_price": price, "rsi": 32.0},
-        stop_loss=stop_loss,
-        take_profit=take_profit,
+        stop_loss=0.0,
+        take_profit=0.0,
     )
     return {
         "ok": True,
@@ -568,7 +562,5 @@ async def insert_test_signal():
         "ticker": ticker,
         "price": price,
         "quantity": quantity,
-        "stop_loss": stop_loss,
-        "take_profit": take_profit,
         "message": "Testsignal skapad — ga till /api/signals eller frontenden for att bekrafta.",
     }

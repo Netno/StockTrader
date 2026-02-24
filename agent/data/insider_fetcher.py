@@ -1,6 +1,9 @@
+import logging
 import httpx
 from datetime import datetime, timedelta
 from typing import List, Dict
+
+logger = logging.getLogger(__name__)
 
 FI_INSIDER_URL = "https://www.fi.se/sv/vara-register/insynshandel/GetInsynshandel/"
 
@@ -11,21 +14,28 @@ async def fetch_insider_trades(ticker: str, company_name: str = None, days: int 
     Pass company_name for accurate results; falls back to ticker if not provided.
     """
     from_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    search_name = company_name or ticker
 
     params = {
-        "issuerName": company_name or ticker,
+        "issuerName": search_name,
         "fromTransactionDate": from_date,
     }
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(FI_INSIDER_URL, params=params, timeout=15)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(FI_INSIDER_URL, params=params, timeout=15)
+    except Exception as e:
+        logger.warning(f"{ticker}: FI insider-anrop misslyckades: {e}")
+        return []
 
     if resp.status_code != 200:
+        logger.warning(f"{ticker}: FI returnerade HTTP {resp.status_code} for '{search_name}'")
         return []
 
     try:
         data = resp.json()
-    except Exception:
+    except Exception as e:
+        logger.warning(f"{ticker}: FI JSON-parsningsfel: {e}")
         return []
 
     trades = []
@@ -40,6 +50,11 @@ async def fetch_insider_trades(ticker: str, company_name: str = None, days: int 
             "quantity": item.get("volume"),
             "date": item.get("transactionDate"),
         })
+
+    if trades:
+        logger.info(f"{ticker}: {len(trades)} insidertransaktioner fran FI (senaste {days} dagar)")
+    else:
+        logger.debug(f"{ticker}: inga insidertransaktioner fran FI")
 
     return trades
 

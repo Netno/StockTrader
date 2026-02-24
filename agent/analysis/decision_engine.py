@@ -114,10 +114,10 @@ def score_buy_signal(
             score += 10
             reasons.append(f"Bollinger: Touch undre band ({bb_lower:.2f}, bekräftat av RSI)")
 
-    # Rapport within 48h → -30p hard penalty
+    # Rapport within 48h → -25p hard penalty
     if has_open_report_soon:
-        score -= 30
-        reasons.append("⚠️ Rapport inom 48h (penalty -30p)")
+        score -= 25
+        reasons.append("⚠️ Rapport inom 48h (penalty -25p)")
 
     # Relative strength vs OMXS30 (20-day)
     if relative_strength is not None:
@@ -142,9 +142,9 @@ def score_sell_signal(
     relative_strength: Optional[float] = None,
 ) -> tuple[int, list[str]]:
     """
-    Calculate sell signal score.
-    Returns (score, reasons). Signal fires if score >= 60.
-    Stop-loss always triggers a sell regardless of score.
+    Calculate sell signal score based on technical analysis and sentiment.
+    Returns (score, reasons). Signal fires if score >= sell_threshold.
+    No automatic stop-loss — the agent only recommends, the user decides.
     """
     score = 0
     reasons = []
@@ -157,7 +157,7 @@ def score_sell_signal(
     macd_prev = indicators.get("macd_prev")
     macd_signal_prev = indicators.get("macd_signal_prev")
 
-    take_profit = position.get("take_profit_price")
+    buy_price = position.get("price", 0)
 
     # RSI > 70 → +25p
     if rsi is not None and rsi > 70:
@@ -170,10 +170,20 @@ def score_sell_signal(
             score += 20
             reasons.append("MACD crossover nedåt")
 
-    # Take-profit reached → +30p
-    if current_price and take_profit and current_price >= take_profit:
-        score += 30
-        reasons.append(f"Take-profit nådd ({take_profit:.2f} kr)")
+    # P&L-aware sell pressure — replaces fixed SL/TP triggers
+    # Large unrealized loss: technical signs + big loss = strong sell signal
+    if current_price and buy_price > 0:
+        pnl_pct = ((current_price - buy_price) / buy_price) * 100
+        if pnl_pct < -10:
+            score += 25
+            reasons.append(f"Stor orealiserad förlust ({pnl_pct:.1f}%)")
+        elif pnl_pct < -6:
+            score += 15
+            reasons.append(f"Orealiserad förlust ({pnl_pct:.1f}%)")
+        # Large unrealized gain: consider taking profit
+        elif pnl_pct > 15:
+            score += 15
+            reasons.append(f"Stor orealiserad vinst ({pnl_pct:.1f}%) — överväg att ta hem")
 
     # Gemini negative sentiment → +15p
     if news_sentiment and news_sentiment.get("sentiment") == "NEGATIVE":
@@ -193,30 +203,30 @@ def score_sell_signal(
     return score, reasons
 
 
-def calculate_position_size(confidence_pct: float) -> float:
-    """Return position size in SEK based on confidence level."""
+def calculate_position_size(confidence_pct: float, atr_pct: float = 0.0) -> float:
+    """Return position size in SEK based on confidence and volatility.
+    
+    Higher confidence = larger position.
+    Higher volatility = smaller position (risk-adjusted).
+    """
     max_size = _settings.get_float("max_position_size")
-    if confidence_pct >= 75:
-        return max_size          # full storlek
+
+    # Confidence scaling
+    if confidence_pct >= 80:
+        size = max_size
+    elif confidence_pct >= 70:
+        size = max_size * 0.80
     elif confidence_pct >= 60:
-        return max_size * 0.72   # ~72%
+        size = max_size * 0.65
     else:
-        return max_size * 0.40   # ~40%
+        size = max_size * 0.40
 
+    # Volatility adjustment — reduce size for highly volatile stocks
+    # ATR/price > 4% = high vol → scale down to 70%
+    # ATR/price > 6% = very high → scale down to 50%
+    if atr_pct > 0.06:
+        size *= 0.50
+    elif atr_pct > 0.04:
+        size *= 0.70
 
-def calculate_stop_take(price: float, indicators: dict, stock_config: dict | None = None) -> tuple[float, float]:
-    """Calculate ATR-based stop-loss and take-profit prices."""
-    config = stock_config or {}
-    atr = indicators.get("atr") or 0
-    atr_multiplier = config.get("atr_multiplier", 2.0)
-    stop_pct = config.get("stop_loss_pct", 0.05)
-    take_pct = config.get("take_profit_pct", 0.10)
-
-    if atr > 0:
-        stop_loss = price - (atr * atr_multiplier)
-    else:
-        stop_loss = price * (1 - stop_pct)
-
-    take_profit = price * (1 + take_pct)
-
-    return round(stop_loss, 2), round(take_profit, 2)
+    return round(size, 2)

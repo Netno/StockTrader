@@ -1,5 +1,6 @@
 # Hur AKTIEMOTOR fungerar
-*En guide för den som kan lite om aktiehandel*
+
+_En guide för den som kan lite om aktiehandel_
 
 ---
 
@@ -55,83 +56,149 @@ Affären sparas med P&L i historiken
 Agenten beräknar ett antal **indikatorer** för varje aktie. Tänk på det som ett batteri av instrument som mäter aktiens "hälsa":
 
 #### RSI — Relative Strength Index
+
 Mäter om en aktie är **översåld** (för billig) eller **överköpt** (för dyr) på kort sikt. Skalan går 0–100.
-- RSI under 35 → aktien har fallit mycket snabbt → potentiellt köpläge (+25 poäng)
+
+- RSI under 35 **i upptrend** (pris över MA200) → starkt köpläge (+25 poäng)
+- RSI under 35 **i nedtrend** (pris under MA200) → svagare signal (+10 poäng)
 - RSI över 70 → aktien har stigit mycket snabbt → potentiellt säljläge (+25 poäng)
 
 #### MACD — Moving Average Convergence Divergence
+
 En indikator som fångar **trendskiften**. Tekniskt sett är det skillnaden mellan två glidande medelvärden (12-dagars och 26-dagars).
-- MACD korsar sin signallinje uppåt → trenden vänder uppåt → köpsignal (+20 poäng)
+
+- MACD korsar sin signallinje uppåt **med positivt histogram** → bekräftat trendskifte → köpsignal (+20 poäng)
+- MACD korsar uppåt **utan histogram-bekräftelse** → svagare signal (+10 poäng)
 - MACD korsar sin signallinje nedåt → trenden vänder nedåt → säljsignal (+20 poäng)
 
 #### Glidande medelvärden — MA50 och MA200
+
 Prisets genomsnitt de senaste 50 respektive 200 handelsdagarna. Aktier "studsar" ofta mot dessa nivåer.
-- Pris nära MA50 (inom 2%) → potentiellt stödnivå → +20 poäng
-- Pris nära MA200 (within 2%) → starkt långsiktigt stöd → +20 poäng
-- Pris under MA50 → aktien är i nedtrend → säljsignal (+20 poäng)
+
+- Pris precis **ovanför** MA50 (inom 2%) → stöd underifrån → +20 poäng
+- Pris precis **under** MA50 → nedbrott → **-10 poäng** (köpavdrag)
+- Pris precis **ovanför** MA200 (inom 2%) → starkt långsiktigt stöd → +20 poäng
+- Pris precis **under** MA200 → varning → **-15 poäng** (köpavdrag)
+- Pris under MA50 (för ägd aktie) → säljsignal (+20 poäng)
 
 #### Bollinger Bands
+
 Tre linjer runt priset: ett medelvärde + ett övre band + ett undre band. Banden visar hur volatil (ryckig) aktien är.
-- Pris rör det undre bandet → aktien är tillfälligt lågt värderad → +10 poäng
+
+- Pris rör det undre bandet **och RSI < 45** → bekräftat tillfälligt köpläge (+10 poäng)
 
 #### Volym
+
 Hur mycket av aktien som handlas. Hög volym vid en prisrörelse bekräftar att rörelsen är "äkta".
-- Volym 50% högre än snittet → marknaden vaknar till → +15 poäng
+
+- Volym 50% högre än snittet **på en stigande dag** → köpsignal (+15 poäng)
+- Volym 50% högre **utan klar riktning** → svagare signal (+8 poäng)
+- Volym 50% högre **på en fallande dag** → säljpress, ingen köppoäng
 
 #### ATR — Average True Range
+
 Mäter hur mycket aktien rör sig per dag i genomsnitt. Används för att beräkna rimliga stop-loss och take-profit-nivåer som är anpassade till aktiens volatilitet.
 
+### Marknadsregim — OMXS30 som kompass
+
+Agenten bedömer marknadens övergripande riktning genom att analysera OMXS30-index:
+
+| Regim       | Villkor             | Effekt                                           |
+| ----------- | ------------------- | ------------------------------------------------ |
+| **BULL**    | Pris > MA50 > MA200 | Inga avdrag — fri lejd                           |
+| **NEUTRAL** | Allt annat          | -10 poäng på alla köpsignaler                    |
+| **BEAR**    | Pris < MA200 × 0.95 | -30 poäng på alla köpsignaler, lägre säljtröskel |
+
+I en **bear-marknad** krävs alltså extremt starka signaler för att motivera ett köp (90p rå-score för att nå 60p-tröskeln).
+
 ### Relativ styrka vs OMXS30
+
 Agenten jämför varje aktie mot **OMXS30-index** (de 30 största bolagen på Stockholmsbörsen). Om aktien stiger mer än index går den bra relativt sett.
+
 - +15% bättre än index (20 dagar) → stark outperformance → +20 poäng
 - +5–15% bättre → outperformance → +10 poäng
 - -10% sämre → underperformance → **-10 poäng** (köpavdrag), **+15 poäng** (säljbonus)
 
 ### Gemini AI — nyhetssentiment
-För varje aktie hämtas de senaste nyheterna. Google Gemini 2.5 Flash läser rubriken och bedömer om nyheten är positiv, negativ eller neutral för aktien på kort sikt (1–5 dagar).
+
+För aktier som redan visar teknisk lovnad hämtas de senaste nyheterna. Google Gemini AI läser rubriken och bedömer om nyheten är positiv, negativ eller neutral för aktien på kort sikt (1–5 dagar). **AI-anropet körs bara när den tekniska pre-scoren redan visar minst 20 poäng** — detta sparar API-anrop.
+
 - Positiv nyhet → +15 poäng på köpscore
 - Negativ nyhet → +15 poäng på säljscore
 
 ### Insiderköp
+
 Agenten hämtar data från **Finansinspektionen** om chefer och styrelseledamöter har köpt aktier i det egna bolaget. Stora insiderköp är en stark signal att insynspersoner tror på aktien.
+
 - Insiderköp >500 000 kr → +10 poäng
 
 ### Resultatrapport-varning
+
 Börsbolag publicerar **kvartalsrapporter** några gånger per år. Kursen kan röra sig mycket kring rapporten — åt båda håll. Det är ett riskabelt läge att köpa in sig.
-- Rapport inom 48 timmar → **-20 poäng** (köpavdrag)
+
+- Rapport inom 48 timmar → **-25 poäng** (köpavdrag)
 
 ---
 
 ## Del 2: Scoring — hur bestäms köp- och säljbeslut?
 
-Alla ovanstående indikatorer ger poäng. Poängen adderas till ett **totalt score**. Signalen skickas bara om poängen är **60 eller högre**.
+Alla ovanstående indikatorer ger poäng. Poängen adderas till ett **totalt score**. Köpsignalen skickas bara om poängen är **60 eller högre** (70 för Large Cap). Säljsignalen skickas vid **55 poäng** (45 i bear-marknad).
 
-### Köpscore — exempel
+### Köpscore — exempel (BULL-marknad)
+
 ```
-RSI 32 (översålt)               +25p
-MACD crossover uppåt            +20p
-Volym 80% över snitt            +15p
-Gemini: Positiv nyhet           +15p
-RS vs OMXS30: +12%              +10p
-                                ─────
-Total:                           85p  → KÖP-signal skickas
+Marknadsregim: BULL                  +0p  (ingen penalty)
+RSI 32 (översålt i upptrend)        +25p
+MACD crossover uppåt (bekräftat)    +20p
+Volym 80% över snitt (stigande dag) +15p
+Gemini: Positiv nyhet               +15p
+RS vs OMXS30: +12%                  +10p
+                                    ─────
+Total:                               85p  → KÖP-signal skickas
+```
+
+### Köpscore — exempel (BEAR-marknad)
+
+```
+Marknadsregim: BEAR                 -30p  ← kräver extremt starka signaler
+RSI 28 (översålt, men under MA200)  +10p
+MACD crossover uppåt (bekräftat)    +20p
+Volym 80% över snitt (stigande dag) +15p
+Gemini: Positiv nyhet               +15p
+RS vs OMXS30: +12%                  +10p
+                                    ─────
+Total:                               40p  → INGEN signal (under 60p)
 ```
 
 ### Säljscore — exempel
+
 ```
-RSI 74 (överköpt)               +25p
-MACD crossover nedåt            +20p
-Pris under MA50                 +20p
-                                ─────
-Total:                           65p  → SÄLJ-signal skickas
+RSI 74 (överköpt)                   +25p
+MACD crossover nedåt                +20p
+Pris under MA50                     +20p
+                                    ─────
+Total:                               65p  → SÄLJ-signal skickas
 ```
 
-### Stop-loss och Take-profit
-Beräknas automatiskt baserat på **ATR** (aktiens dagliga rörelse). Formeln är:
-- Stop-loss = köppris − (ATR × 1.3) → skyddar mot normala svängningar
-- Take-profit = köppris × 1.10 → 10% vinst som mål (kan variera per aktie)
+Säljscoren tar även hänsyn till **orealiserad vinst/förlust**:
 
-Dessa nivåer skickas med i notisen och visas i appen.
+- Förlust större än 10% → +25p (stark säljpressning)
+- Förlust större än 6% → +15p
+- Vinst större än 15% → +15p (överväg att ta hem vinsten)
+
+Dessa kombineras med de tekniska indikatorerna — en stor förlust **ensam** triggar inte sälj, men i kombination med t.ex. MACD nedåt och pris under MA50 blir det en stark signal.
+
+### Positionsstorlek — volatilitetsjusterad
+
+Hur mycket kapital som investeras beror på **signalkonfidensen** och **aktiens volatilitet**:
+
+| Konfidenspoäng | Storlek     | Hög volatilitet (>4% ATR) | Mycket hög (>6% ATR) |
+| -------------- | ----------- | ------------------------- | -------------------- |
+| ≥80p           | 100% av max | 70%                       | 50%                  |
+| 70–79p         | 80% av max  | 56%                       | 40%                  |
+| 60–69p         | 65% av max  | 46%                       | 33%                  |
+
+Volatila aktier får alltså automatiskt en mindre position för att begränsa risken.
 
 ---
 
@@ -141,24 +208,30 @@ Agenten håller en **bevakningslista** med aktier som analyseras aktivt var 2:e 
 
 ### Daglig och veckovis scanning
 
-| Tidpunkt | Vad händer |
-|----------|-----------|
-| Vardagar 17:45 | Daglig skanning av hela universumet |
+| Tidpunkt       | Vad händer                                                  |
+| -------------- | ----------------------------------------------------------- |
+| Vardagar 17:45 | Daglig skanning av hela universumet                         |
 | Söndagar 18:00 | Veckovis skanning (samma logik, men mer tid att köra klart) |
 
-Scannern genomsöker ett **universum av ~75 svenska Large/Mid Cap-aktier** och poängsätter var och en efter fyra kriterier:
+Scannern genomsöker ett **universum av ~75 svenska Large/Mid Cap-aktier** och poängsätter var och en efter dessa kriterier:
 
-| Kriterium | Poäng | Förklaring |
-|-----------|-------|-----------|
-| Daglig volatilitet 2–8% | +30p | Lagom rörig — varken för tråkig eller för ryckig för att handla |
-| Hög handelsvolym (>1.5× snitt) | +25p | Mycket folk handlar = lättare att köpa/sälja när du vill |
-| Pris över MA50 | +20p | Aktien är i upptrend på medellång sikt |
-| Pris över MA200 | +15p | Aktien är i upptrend på lång sikt |
-| RSI mellan 30–70 | +10p | Varken extremt översålt eller överköpt — i ett "normalt" läge |
+| Kriterium                             | Poäng | Förklaring                                                      |
+| ------------------------------------- | ----- | --------------------------------------------------------------- |
+| Mycket hög likviditet (>200M SEK/dag) | +20p  | Extremt lätthandlad — bästa möjliga utförande                   |
+| God likviditet (>80M SEK/dag)         | +10p  | Tillräcklig likviditet för normalhandel                         |
+| Daglig volatilitet 2–8%               | +25p  | Lagom rörig — varken för tråkig eller för ryckig för att handla |
+| Hög volatilitet (>8%)                 | +10p  | Mycket ryckig — fortfarande intressant men riskabelt            |
+| Hög handelsvolym (>1.5× snitt)        | +20p  | Marknaden handlar aktivt — hög handelsaktivitet                 |
+| Normal volym (>1.0× snitt)            | +10p  | Inga varningssignaler                                           |
+| Pris över MA50                        | +20p  | Aktien är i upptrend på medellång sikt                          |
+| Pris över MA200                       | +15p  | Aktien är i upptrend på lång sikt                               |
+| RSI mellan 30–70                      | +10p  | Varken extremt översålt eller överköpt — i ett "normalt" läge   |
+
+Aktier med **omsättning under 30M SEK/dag** eller **färre än 50 handelsdagar** filtreras bort direkt.
 
 ### Vad händer om en bättre aktie hittas?
 
-Scannern jämför de **5 bästa nya kandidaterna** mot de **2 svagaste på bevakningslistan**. Om en ny kandidat har mer än 10 poäng fler än den svagaste, byts den ut automatiskt:
+Scannern jämför de **5 bästa nya kandidaterna** mot de **2 svagaste på bevakningslistan**. Om en ny kandidat har mer än **25 poäng fler** än den svagaste, byts den ut automatiskt:
 
 ```
 Svag på listan:   SINCH  (45p) → avaktiveras
@@ -170,50 +243,57 @@ Aktier du **äger just nu** byts aldrig ut ur bevakningslistan — agenten forts
 ### Notisen du får
 
 När ett byte sker skickas en push-notis:
+
 ```
 ⟳ Watchlist uppdaterad
 1 byte(n):
   SINCH (45p) -> BURE (78p)
 ```
 
-Om inga byten görs skickas ändå en tyst bekräftelse: *"Watchlist-skanning klar — inga byten gjordes."*
+Om inga byten görs skickas ändå en tyst bekräftelse: _"Watchlist-skanning klar — inga byten gjordes."_
 
 Dessa notiser visas i **"Portfoljnotiser"** på dashboarden med en lila ⟳-ikon.
 
 ### Portföljrotation (under handelsdagen)
 
-Om alla 3 positioner redan är fyllda och agenten hittar en ny aktie med klart högre köpscore, skickas en **säljrekommendation** på den svagaste positionen du äger:
+Om alla 3 positioner redan är fyllda och agenten hittar en ny aktie med klart högre **köpscore**, skickas en **säljrekommendation** på den svagaste positionen du äger.
+
+Agenten räknar ut köpscore för varje aktie du äger och jämför med den nya kandidaten. Om kandidaten har **minst 15 poäng bättre** köpscore:
 
 ```
-Du äger: EVO (svagast just nu, säljscore 45p)
-Ny kandidat: BURE (köpscore 80p, dvs 35p bättre)
+Du äger: EVO (svagast av dina positioner, köpscore 35p)
+Ny kandidat: BURE (köpscore 80p, dvs 45p bättre → mer än 15p marginal)
 
 → Notis: "Sälj EVO på Avanza för att frigöra kapital till BURE"
 ```
 
-Logiken är enkel: sälj det sämsta du äger och byt till det bättre alternativet.
+Logiken är enkel: om du äger tre aktier och en ny kandidat är markant starkare än din svagaste, föreslås ett byte.
 
 ---
 
 ## Del 4: Flödet för en köpaffär
 
 ### 1. Agenten hittar ett läge
+
 Var 2:e minut analyseras alla bevakade aktier. Om en aktie når 60+ poäng skapas en **väntande signal** i databasen.
 
 ### 2. Push-notis på mobilen
+
 Du får en notis via **ntfy.sh**-appen:
+
 ```
 📈 KÖP-signal: EVO
 Pris: 532 kr × 4 aktier = 2 128 kr
 Score: 85p | Confidence: 85%
-SL: 515 kr | TP: 574 kr
 [Klicka för att bekräfta]
 ```
 
 ### 3. Du köper på Avanza
+
 Du öppnar Avanza och köper det antal aktier som rekommenderas. Detta gör **du manuellt** — systemet kan inte handla åt dig.
 
 ### 4. Du bekräftar i appen
+
 Du öppnar AKTIEMOTOR-appen (klickar länken i notisen), hittar signalen och klickar **Bekräfta**. Nu vet systemet att du verkligen köpte, och en position öppnas i dashboarden med löpande P&L.
 
 > Om du väljer att inte köpa klickar du **Neka** istället.
@@ -223,23 +303,33 @@ Du öppnar AKTIEMOTOR-appen (klickar länken i notisen), hittar signalen och kli
 ## Del 5: Flödet för en säljaffär
 
 ### 1. Agenten bevakar din position
-Var 2:e minut kontrolleras om din aktie har:
-- Nått **stop-loss** (kursen har fallit för mycket)
-- Nått **take-profit** (kursen har stigit till målet)
-- Fått ett säljscore ≥ 60 (tekniska indikatorer pekar nedåt)
+
+Var 2:e minut analyseras varje aktie du äger. Agenten ger en säljrekommendation om de tekniska indikatorerna visar svåghet:
+
+- RSI överköpt (>70) → +25p
+- MACD crossover nedåt → +20p
+- Pris under MA50 → +20p
+- Stor orealiserad förlust (>10%) → +25p
+- Negativt sentiment (Gemini) → +15p
+- Underperformance vs OMXS30 → +15p
+
+Om totalen når **55 poäng** (45 i bear-marknad) skickas en säljrekommendation.
 
 ### 2. Push-notis på mobilen
+
 ```
 📉 SÄLJ-signal: EVO
 Pris: 574 kr (+7.9%) | P&L: +168 kr
-Anledning: Take-profit nådd
+Anledning: RSI överköpt, MACD nedåt
 Sälj på Avanza och stäng i appen
 ```
 
 ### 3. Du säljer på Avanza
+
 Du säljer manuellt på Avanza.
 
 ### 4. Du stänger i appen
+
 I dashboarden klickar du **Stäng** på den öppna positionen. Systemet beräknar och sparar din vinst/förlust.
 
 ---
@@ -261,6 +351,7 @@ Notiserna skickas via **ntfy.sh** — en gratis app du installerar på mobilen. 
 ## Del 7: Dashboarden — vad ser du?
 
 ### Startsidan
+
 - **Tillgänglig kassa** — hur mycket kapital du har kvar att investera
 - **Investerat** — summa låst i öppna positioner
 - **Avslutade affärer** — antal genomförda affärer
@@ -270,15 +361,19 @@ Notiserna skickas via **ntfy.sh** — en gratis app du installerar på mobilen. 
 - **Portföljnotiser** — morgen/kvällssummeringar
 
 ### Signaler (`/dashboard/signals`)
+
 Lista med alla köp- och säljsignaler. Köpsignaler har bekräfta/neka-knappar. Säljsignaler visar bara "Sälj på Avanza".
 
 ### Aktier (`/dashboard/stocks`)
+
 Prislista på alla bevakade aktier.
 
 ### Historik (`/dashboard/history`)
+
 Alla avslutade affärer med P&L, anledning till stängning, datum.
 
 ### Nyheter (`/dashboard/news`)
+
 Nyhetsflöde med Gemini-sentiment för alla bevakade aktier.
 
 ---
@@ -295,14 +390,14 @@ Du sätter in kapital i appen för att systemet ska veta hur mycket du har att h
 
 ## Del 9: Schemaläggning — när händer vad?
 
-| Tid | Händelse |
-|-----|----------|
-| 08:30 | Morgonkontroll — nollställer dagliga räknare |
-| 08:45 | Morgonsummering — push-notis med portföljöversikt |
-| 09:00–17:28 | **Handelsloop var 2:e minut** — analyserar alla bevakade aktier |
-| 17:35 | Kvällssummering — push-notis med dagens resultat |
-| 17:45 | Daglig skanning — söker igenom 75 aktier, uppdaterar bevakningslistan |
-| Söndag 18:00 | Veckovis skanning — samma som daglig men mer grundlig |
+| Tid          | Händelse                                                              |
+| ------------ | --------------------------------------------------------------------- |
+| 08:30        | Morgonkontroll — nollställer dagliga räknare                          |
+| 08:45        | Morgonsummering — push-notis med portföljöversikt                     |
+| 09:00–17:28  | **Handelsloop var 2:e minut** — analyserar alla bevakade aktier       |
+| 17:35        | Kvällssummering — push-notis med dagens resultat                      |
+| 17:45        | Daglig skanning — söker igenom 75 aktier, uppdaterar bevakningslistan |
+| Söndag 18:00 | Veckovis skanning — samma som daglig men mer grundlig                 |
 
 Allt detta körs automatiskt på Railway (en molntjänst) — du behöver inte ha datorn igång.
 
@@ -331,4 +426,4 @@ Prisdata från Yahoo Finance hämtas via Vercel (en omväg) eftersom Railway-ser
 
 ---
 
-*Systemet hanterar aldrig riktiga pengar automatiskt. Allt bygger på att du agerar på rekommendationerna och köper/säljer på Avanza manuellt.*
+_Systemet hanterar aldrig riktiga pengar automatiskt. Allt bygger på att du agerar på rekommendationerna och köper/säljer på Avanza manuellt._
