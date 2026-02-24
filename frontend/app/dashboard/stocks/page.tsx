@@ -117,9 +117,9 @@ export default async function StocksPage() {
                     <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
                       {strategyLabel[stock.strategy] ?? stock.strategy}
                     </span>
-                    {AVANZA_URLS[stock.ticker] && (
+                    {(stock.avanza_url ?? AVANZA_URLS[stock.ticker]) && (
                       <a
-                        href={AVANZA_URLS[stock.ticker]}
+                        href={stock.avanza_url ?? AVANZA_URLS[stock.ticker]}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full hover:bg-blue-500/20 transition"
