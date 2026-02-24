@@ -18,6 +18,10 @@ from analysis.decision_engine import (
     get_effective_buy_threshold,
     get_effective_sell_threshold,
     calculate_opportunity_score,
+    calculate_atr_stop_loss,
+    calculate_atr_take_profit,
+    calculate_transaction_cost,
+    calculate_round_trip_cost_pct,
 )
 from notifications import ntfy
 from db import supabase_client as db
@@ -341,47 +345,94 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                     weakest_indicators = pos_indicators
                     weakest_current_price = pos_indicators.get("current_price", pos["price"])
 
-            # Rotate only if candidate is clearly better on risk-adjusted opportunity scale
-            if weakest_ticker and candidate_opportunity > weakest_opp_score + 8:
+            # Rotate only if candidate is clearly better on risk-adjusted
+            # opportunity scale AND the margin exceeds transaction costs.
+            # Formel: E(R_new) - E(R_current) > TC_sell + TC_buy + Tau
+            rotation_tau = float(_settings.get("rotation_tau", "1.5"))  # friktionströskel %
+            try:
+                portfolio_value, _ = await db.get_portfolio_summary(PAPER_BALANCE)
+                total_equity = portfolio_value if portfolio_value > 0 else PAPER_BALANCE
+            except Exception:
+                total_equity = PAPER_BALANCE
+
+            if weakest_ticker:
                 pos = open_positions[weakest_ticker]
-                # Använd aktuellt marknadspris — inte entry-pris
                 current_price_weak = weakest_current_price or pos["price"]
                 pos_qty = pos["quantity"]
-                pnl_kr = (current_price_weak - pos["price"]) * pos_qty
-                pnl_pct = ((current_price_weak - pos["price"]) / pos["price"]) * 100 if pos["price"] else 0
-                rotation_reasons = [
-                    f"Rotation: {ticker} opportunity {candidate_opportunity:.1f} > {weakest_ticker} {weakest_opp_score:.1f}",
-                    f"Salj {weakest_ticker} pa Avanza for att frigora kapital",
-                ]
-                await db.save_signal(
-                    weakest_ticker, "SELL", current_price_weak, pos_qty, float(buy_score),
-                    buy_score, rotation_reasons, weakest_indicators, 0.0, 0.0,
-                )
-                weakest_cfg = stock_config_map.get(weakest_ticker, {})
-                await ntfy.send_sell_signal(
-                    weakest_ticker, weakest_cfg.get("name", weakest_ticker),
-                    current_price_weak, pos_qty, pnl_pct, pnl_kr, rotation_reasons, float(buy_score),
-                )
-                logger.info(
-                    f"ROTATION: Salj {weakest_ticker} for att kopa {ticker} | "
-                    f"ny opp={candidate_opportunity:.1f} > gammal opp={weakest_opp_score:.1f}"
-                )
-            else:
-                logger.debug(
-                    f"{ticker}: max positioner natt, ingen rotation "
-                    f"(opp={candidate_opportunity:.1f} vs svagaste={weakest_opp_score:.1f})."
-                )
+                sell_value = current_price_weak * pos_qty
+                buy_value = price * (int(sell_value / price) if price > 0 else 0)
+
+                # Avg daily turnover för TC-beräkning
+                try:
+                    avg_turnover_candidate = float((df["close"] * df["volume"]).mean())
+                except Exception:
+                    avg_turnover_candidate = 50_000_000
+
+                tc_sell = calculate_transaction_cost(sell_value, total_equity, avg_turnover_candidate)
+                tc_buy = calculate_transaction_cost(buy_value, total_equity, avg_turnover_candidate)
+                tc_total_pct = ((tc_sell + tc_buy) / sell_value * 100) if sell_value > 0 else 0.0
+                required_margin = tc_total_pct + rotation_tau
+
+                # Konvertera opportunity-gap till procent (10p ≈ ~5% förväntad överprestanda)
+                # Krav: opportunity-gap måste överstiga transaktionskostnad + tau
+                opp_gap = candidate_opportunity - weakest_opp_score
+                # Minimum 8p gap + TC-krav
+                should_rotate = opp_gap > max(8, required_margin * 2)
+
+                if should_rotate:
+                    pnl_kr = (current_price_weak - pos["price"]) * pos_qty
+                    pnl_pct = ((current_price_weak - pos["price"]) / pos["price"]) * 100 if pos["price"] else 0
+                    rotation_reasons = [
+                        f"Rotation: {ticker} opp {candidate_opportunity:.1f} > {weakest_ticker} {weakest_opp_score:.1f} (gap {opp_gap:.1f}p)",
+                        f"TC: {tc_total_pct:.2f}% + tau {rotation_tau:.1f}% = {required_margin:.2f}% krävs",
+                        f"Salj {weakest_ticker} pa Avanza for att frigora kapital",
+                    ]
+                    await db.save_signal(
+                        weakest_ticker, "SELL", current_price_weak, pos_qty, float(buy_score),
+                        buy_score, rotation_reasons, weakest_indicators, 0.0, 0.0,
+                    )
+                    weakest_cfg = stock_config_map.get(weakest_ticker, {})
+                    await ntfy.send_sell_signal(
+                        weakest_ticker, weakest_cfg.get("name", weakest_ticker),
+                        current_price_weak, pos_qty, pnl_pct, pnl_kr, rotation_reasons, float(buy_score),
+                    )
+                    logger.info(
+                        f"ROTATION: Salj {weakest_ticker} for att kopa {ticker} | "
+                        f"opp gap={opp_gap:.1f}p | TC={tc_total_pct:.2f}% + tau={rotation_tau:.1f}%"
+                    )
+                else:
+                    logger.debug(
+                        f"{ticker}: rotation avvisad — gap {opp_gap:.1f}p < "
+                        f"krävd marginal {max(8, required_margin * 2):.1f}p "
+                        f"(TC={tc_total_pct:.2f}% + tau={rotation_tau:.1f}%)"
+                    )
             return
 
         confidence = min(99.0, float(buy_score))
         atr = indicators.get("atr", 0)
         atr_pct = (atr / price) if (atr and price > 0) else 0.0
-        position_value = calculate_position_size(confidence, atr_pct=atr_pct)
+
+        # Dynamisk position sizing baserad på totalt kapital
+        try:
+            portfolio_value, _ = await db.get_portfolio_summary(PAPER_BALANCE)
+            total_equity = portfolio_value if portfolio_value > 0 else PAPER_BALANCE
+        except Exception:
+            total_equity = PAPER_BALANCE
+
+        position_value = calculate_position_size(
+            confidence,
+            atr_pct=atr_pct,
+            total_equity=total_equity,
+        )
         quantity = int(position_value / price) if price > 0 else 0
 
         if quantity < 1:
             logger.info(f"{ticker}: for hogt pris for en hel aktie.")
             return
+
+        # ATR-baserad stop-loss och take-profit
+        stop_loss = calculate_atr_stop_loss(price, atr) if atr > 0 else 0.0
+        take_profit = calculate_atr_take_profit(price, atr) if atr > 0 else 0.0
 
         news_headline = news_list[0]["headline"] if news_list else ""
         description = await _get_signal_description(ticker, "BUY", price, buy_reasons, news_headline)
@@ -389,7 +440,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
 
         await db.save_signal(
             ticker, "BUY", price, quantity, confidence, buy_score,
-            buy_reasons, indicators, 0.0, 0.0,
+            buy_reasons, indicators, stop_loss, take_profit,
         )
         await ntfy.send_buy_signal(
             ticker, company, price, quantity,

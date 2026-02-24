@@ -24,6 +24,9 @@ def calculate_market_regime(index_df: pd.DataFrame) -> str:
 
     if current > ma50 and current > ma200 and ma50 > ma200:
         return "BULL"
+    elif current > ma200 and (current > ma50 or ma50 > ma200 * 0.98):
+        # Pris över MA200, MA50 nära golden cross — tidig upptrend
+        return "BULL_EARLY"
     elif current < ma200 * 0.95:
         return "BEAR"
     return "NEUTRAL"

@@ -14,10 +14,16 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="sv">
-      <body className={`${inter.className} bg-gray-950 text-gray-100 min-h-screen`}>
+      <body
+        className={`${inter.className} bg-gray-950 text-gray-100 min-h-screen`}
+      >
         {children}
       </body>
     </html>

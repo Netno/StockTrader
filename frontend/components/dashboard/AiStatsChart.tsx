@@ -336,27 +336,27 @@ export default function AiStatsChart() {
             margin={{ top: 4, right: 0, left: -20, bottom: 4 }}
             style={{ backgroundColor: "#111827", borderRadius: "8px" }}
           >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#1f2937"
-            fill="#111827"
-            fillOpacity={1}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fill: "#6b7280", fontSize: 11 }}
-            tickFormatter={formatLabel}
-            interval={0}
-            angle={0}
-            textAnchor="middle"
-            height={30}
-          />
-          <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
-          <Tooltip content={<CustomTooltip />} cursor={false} />
-          <Legend
-            wrapperStyle={{ fontSize: "11px", color: "#9ca3af" }}
-            iconSize={10}
-          />
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#1f2937"
+              fill="#111827"
+              fillOpacity={1}
+            />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: "#6b7280", fontSize: 11 }}
+              tickFormatter={formatLabel}
+              interval={0}
+              angle={0}
+              textAnchor="middle"
+              height={30}
+            />
+            <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
+            <Tooltip content={<CustomTooltip />} cursor={false} />
+            <Legend
+              wrapperStyle={{ fontSize: "11px", color: "#9ca3af" }}
+              iconSize={10}
+            />
             {renderBars()}
           </BarChart>
         </ResponsiveContainer>

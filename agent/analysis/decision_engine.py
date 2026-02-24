@@ -3,6 +3,72 @@ from data.insider_fetcher import has_significant_insider_buy
 import settings as _settings
 
 
+# ── Friktionsmodell (courtage + spread + slippage) ──────────────────────
+
+def calculate_courtage(order_value: float, total_equity: float) -> float:
+    """Avanzas courtagetrappa.
+
+    Under 50 000 SEK totalt equity → 0 kr courtage (Avanza Start).
+    Över 50 000 SEK → max(1 kr, ordervärde × 0.25%).
+    """
+    if total_equity < 50_000:
+        return 0.0
+    return max(1.0, order_value * 0.0025)
+
+
+def estimate_spread_cost(order_value: float, avg_daily_turnover: float = 0.0) -> float:
+    """Estimera spread/slippage-kostnad i SEK baserat på likviditetssegment.
+
+    Stora bolag (>100M/dag):  ~0.15%
+    Medelstora (30–100M/dag): ~0.40%
+    Små (<30M/dag):           ~0.80%
+    """
+    if avg_daily_turnover >= 100_000_000:
+        return order_value * 0.0015
+    elif avg_daily_turnover >= 30_000_000:
+        return order_value * 0.004
+    else:
+        return order_value * 0.008
+
+
+def calculate_transaction_cost(
+    order_value: float,
+    total_equity: float,
+    avg_daily_turnover: float = 0.0,
+) -> float:
+    """Total transaktionskostnad (courtage + spread) i SEK."""
+    return (
+        calculate_courtage(order_value, total_equity)
+        + estimate_spread_cost(order_value, avg_daily_turnover)
+    )
+
+
+def calculate_round_trip_cost_pct(
+    order_value: float,
+    total_equity: float,
+    avg_daily_turnover: float = 0.0,
+) -> float:
+    """Round-trip kostnad (köp + sälj) som procent av ordervärdet."""
+    one_way = calculate_transaction_cost(order_value, total_equity, avg_daily_turnover)
+    return (one_way * 2 / order_value * 100) if order_value > 0 else 0.0
+
+
+# ── ATR-baserade prisnivåer ─────────────────────────────────────────────
+
+def calculate_atr_stop_loss(price: float, atr: float, multiplier: float = 1.8) -> float:
+    """ATR-baserad stop-loss.  Default 1.8× ATR under inträde."""
+    if atr <= 0 or price <= 0:
+        return round(price * 0.94, 2)  # fallback 6%
+    return round(price - (atr * multiplier), 2)
+
+
+def calculate_atr_take_profit(price: float, atr: float, multiplier: float = 3.5) -> float:
+    """ATR-baserad take-profit.  Default 3.5× ATR ger ~2:1 R/R."""
+    if atr <= 0 or price <= 0:
+        return round(price * 1.12, 2)  # fallback 12%
+    return round(price + (atr * multiplier), 2)
+
+
 def score_buy_signal(
     ticker: str,
     indicators: dict,
@@ -170,20 +236,24 @@ def score_sell_signal(
             score += 20
             reasons.append("MACD crossover nedåt")
 
-    # P&L-aware sell pressure — replaces fixed SL/TP triggers
-    # Large unrealized loss: technical signs + big loss = strong sell signal
+    # ATR-relativ P&L-bedömning — anpassar sig till aktiens volatilitet
+    atr = indicators.get("atr", 0)
     if current_price and buy_price > 0:
         pnl_pct = ((current_price - buy_price) / buy_price) * 100
-        if pnl_pct < -10:
+        # Använd ATR relativt köpkurs som volatilitetsreferens
+        atr_pct = (atr / buy_price * 100) if (atr and buy_price > 0) else 3.0
+
+        # Förlust > 2× ATR → stark säljsignal (anpassad till volatilitet)
+        if pnl_pct < -(atr_pct * 2.0):
             score += 25
-            reasons.append(f"Stor orealiserad förlust ({pnl_pct:.1f}%)")
-        elif pnl_pct < -6:
+            reasons.append(f"Förlust {pnl_pct:.1f}% > 2× ATR ({atr_pct:.1f}%) — allvarlig")
+        elif pnl_pct < -(atr_pct * 1.5):
             score += 15
-            reasons.append(f"Orealiserad förlust ({pnl_pct:.1f}%)")
-        # Large unrealized gain: consider taking profit
-        elif pnl_pct > 15:
+            reasons.append(f"Förlust {pnl_pct:.1f}% > 1.5× ATR ({atr_pct:.1f}%)")
+        # Vinst > 4× ATR → överväg realisering
+        elif pnl_pct > atr_pct * 4.0:
             score += 15
-            reasons.append(f"Stor orealiserad vinst ({pnl_pct:.1f}%) — överväg att ta hem")
+            reasons.append(f"Vinst {pnl_pct:.1f}% > 4× ATR — överväg att ta hem")
 
     # Gemini negative sentiment → +15p
     if news_sentiment and news_sentiment.get("sentiment") == "NEGATIVE":
@@ -203,13 +273,39 @@ def score_sell_signal(
     return score, reasons
 
 
-def calculate_position_size(confidence_pct: float, atr_pct: float = 0.0) -> float:
-    """Return position size in SEK based on confidence and volatility.
-    
-    Higher confidence = larger position.
-    Higher volatility = smaller position (risk-adjusted).
+def calculate_position_size(
+    confidence_pct: float,
+    atr_pct: float = 0.0,
+    total_equity: float = 0.0,
+    cash_buffer: float = 0.0,
+    max_positions: int = 0,
+) -> float:
+    """Dynamisk position sizing baserad på totalt kapital och volatilitet.
+
+    Formel: min(MAX_POSITION_VALUE, (TOTAL_EQUITY - CASH_BUFFER) / N)
+    Sedan skalas ned med confidence och volatilitet.
+
+    Args:
+        confidence_pct: Signalens styrka (0–100).
+        atr_pct: ATR / pris (0.0–1.0).
+        total_equity: Portföljens totala värde i SEK (0 = använd fast max).
+        cash_buffer: Likviditetsbuffert att reservera (SEK).
+        max_positions: Max antal simultana positioner.
     """
-    max_size = _settings.get_float("max_position_size")
+    settings_max = _settings.get_float("max_position_size")
+    if max_positions <= 0:
+        max_positions = _settings.get_int("max_positions")
+    if cash_buffer <= 0:
+        cash_buffer = _settings.get_float("cash_buffer") if _settings.get("cash_buffer") else 2000.0
+
+    # Dynamiskt positionstak: (equity - buffert) / N, begränsat av settings-max
+    if total_equity > 0:
+        dynamic_max = max(0, (total_equity - cash_buffer)) / max(1, max_positions)
+        max_size = min(settings_max, dynamic_max) if settings_max > 0 else dynamic_max
+    else:
+        max_size = settings_max
+
+    max_size = max(0.0, max_size)
 
     # Confidence scaling
     if confidence_pct >= 80:
@@ -222,14 +318,12 @@ def calculate_position_size(confidence_pct: float, atr_pct: float = 0.0) -> floa
         size = max_size * 0.40
 
     # Volatility adjustment — reduce size for highly volatile stocks
-    # ATR/price > 4% = high vol → scale down to 70%
-    # ATR/price > 6% = very high → scale down to 50%
     if atr_pct > 0.06:
         size *= 0.50
     elif atr_pct > 0.04:
         size *= 0.70
 
-    return round(size, 2)
+    return round(max(0.0, size), 2)
 
 
 def get_effective_buy_threshold(
