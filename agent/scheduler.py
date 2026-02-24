@@ -28,35 +28,10 @@ cooldowns: dict[str, datetime] = {}
 daily_signals = 0
 daily_trades = 0
 
-# Dedup-cache för nyhetssparande: förhindrar att samma rubrik sparas flera gånger per dag
-# Nyckel: "ticker:headline" -> expires_at (monotonic)
-_news_save_cache: dict[str, float] = {}
-_NEWS_SAVE_TTL = 24 * 3600  # 24h — sparar varje unik rubrik max en gång per dag
-
 # Cache för generate_signal_description: förhindrar upprepade Gemini-anrop för samma signal
 # Nyckel: "ticker:BUY/SELL" -> (description, expires_at)
 _description_cache: dict[str, tuple[str, float]] = {}
 _DESCRIPTION_TTL = 2 * 3600  # 2h — återanvänd samma beskrivning för upprepade signaler
-
-
-async def _should_save_news(ticker: str, headline: str) -> bool:
-    """Returnerar True om rubriken inte sparats tidigare.
-    Kontrollerar först in-memory cache (snabb), sedan databasen (restart-säker)."""
-    key = f"{ticker}:{headline}"
-    now = _time.monotonic()
-    if _news_save_cache.get(key, 0) > now:
-        return False
-    # DB-kontroll — överlever Railway-restarter och deploy-overlap
-    try:
-        from db.supabase_client import get_client
-        result = get_client().table("stock_news").select("id").eq("ticker", ticker).eq("headline", headline).limit(1).execute()
-        if result.data:
-            _news_save_cache[key] = now + _NEWS_SAVE_TTL  # cache för att slippa upprepad DB-lookup
-            return False
-    except Exception:
-        pass  # vid DB-fel, tillåt insert (hellre dubblett än att missa nyheter)
-    _news_save_cache[key] = now + _NEWS_SAVE_TTL
-    return True
 
 
 async def _get_signal_description(ticker: str, signal_type: str, price: float, reasons: list[str], news_headline: str = "") -> str:
@@ -196,17 +171,17 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
     if needs_sentiment:
         for item in news_list[:1]:  # max 1 Gemini-anrop per ticker per loop
             sentiment = await analyze_sentiment(ticker, item["headline"])
-            if await _should_save_news(ticker, item["headline"]):
-                await db.save_news(
-                    ticker=ticker,
-                    headline=item["headline"],
-                    url=item["url"],
-                    sentiment=sentiment["sentiment"],
-                    sentiment_score=sentiment["score"],
-                    reason=sentiment["reason"],
-                    source=item["source"],
-                    published_at=item["published_at"],
-                )
+            # save_news har inbyggd dedup — sparar bara om rubriken inte redan finns
+            await db.save_news(
+                ticker=ticker,
+                headline=item["headline"],
+                url=item["url"],
+                sentiment=sentiment["sentiment"],
+                sentiment_score=sentiment["score"],
+                reason=sentiment["reason"],
+                source=item["source"],
+                published_at=item["published_at"],
+            )
             if latest_sentiment is None:
                 latest_sentiment = sentiment
         logger.info(f"{ticker}: sentimentanalys körd | resultat={latest_sentiment.get('sentiment') if latest_sentiment else 'NONE'} (pre_score buy={pre_buy_score} sell={pre_sell_score})")

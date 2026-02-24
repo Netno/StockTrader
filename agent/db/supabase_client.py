@@ -169,7 +169,16 @@ async def save_news(
     reason: str,
     source: str,
     published_at,
-):
+) -> bool:
+    """Spara en nyhet till databasen. Returnerar False om den redan finns (dedup)."""
+    # Dedup-kontroll direkt i DB — förhindrar dubletter oavsett cache-status
+    try:
+        existing = get_client().table("stock_news").select("id").eq("ticker", ticker).eq("headline", headline).limit(1).execute()
+        if existing.data:
+            return False
+    except Exception:
+        pass  # vid DB-läsfel, försök ändå (hellre dubblett än att missa nyheten)
+
     get_client().table("stock_news").insert({
         "ticker": ticker,
         "headline": headline,
@@ -181,6 +190,7 @@ async def save_news(
         "published_at": published_at.isoformat() if published_at else None,
         "created_at": _now(),
     }).execute()
+    return True
 
 
 async def get_open_positions() -> list:

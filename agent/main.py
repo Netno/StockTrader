@@ -304,6 +304,30 @@ async def get_news(ticker: str = None, limit: int = 50):
     return query.execute().data
 
 
+@app.post("/api/news/cleanup")
+async def cleanup_duplicate_news():
+    """Ta bort dubbletter i stock_news — behåll den äldsta per ticker+headline."""
+    from db.supabase_client import get_client
+    client = get_client()
+    all_news = client.table("stock_news").select("id, ticker, headline, created_at").order("created_at", desc=False).execute()
+    if not all_news.data:
+        return {"ok": True, "deleted": 0}
+
+    seen: dict[str, str] = {}  # "ticker:headline" -> first id
+    to_delete: list[str] = []
+    for row in all_news.data:
+        key = f"{row['ticker']}:{row['headline']}"
+        if key in seen:
+            to_delete.append(row["id"])
+        else:
+            seen[key] = row["id"]
+
+    for news_id in to_delete:
+        client.table("stock_news").delete().eq("id", news_id).execute()
+
+    return {"ok": True, "deleted": len(to_delete), "kept": len(seen)}
+
+
 @app.get("/api/portfolio")
 async def get_portfolio():
     from db.supabase_client import get_client
@@ -385,7 +409,7 @@ async def fetch_news_for_ticker(ticker: str):
     saved = []
     for item in news_list[:1]:  # max 1 Gemini-anrop per manuellt anrop
         sentiment = await analyze_sentiment(ticker, item["headline"])
-        await db.save_news(
+        was_saved = await db.save_news(
             ticker=ticker,
             headline=item["headline"],
             url=item["url"],
@@ -400,6 +424,7 @@ async def fetch_news_for_ticker(ticker: str):
             "sentiment": sentiment["sentiment"],
             "score": sentiment["score"],
             "reason": sentiment["reason"],
+            "already_existed": not was_saved,
         })
 
     return {"ticker": ticker, "fetched": len(saved), "news": saved}
