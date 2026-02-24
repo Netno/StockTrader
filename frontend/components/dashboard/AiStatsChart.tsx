@@ -42,13 +42,13 @@ const METRICS: { key: Metric; label: string }[] = [
 export default function AiStatsChart() {
   const [granularity, setGranularity] = useState<Granularity>("daily");
   const [metric, setMetric] = useState<Metric>("calls");
-  const [data, setData] = useState<ChartRow[]>([]);
+  const [rawData, setRawData] = useState<ChartRow[]>([]); // always hourly rows
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<string>(""); // for hourly: which day
 
+  // Fetch hourly data once — aggregate daily client-side
   useEffect(() => {
-    // Don't clear data during refetch — keeps chart visible and prevents scroll jump
-    fetch(`${API}/api/ai-stats/history?granularity=${granularity}&days=30`, {
+    fetch(`${API}/api/ai-stats/history?granularity=hourly&days=30`, {
       cache: "no-store",
     })
       .then((r) => r.json())
@@ -58,25 +58,45 @@ export default function AiStatsChart() {
             if (a.date !== b.date) return a.date.localeCompare(b.date);
             return (a.hour ?? 0) - (b.hour ?? 0);
           });
-          setData(sorted);
-          if (granularity === "hourly" && sorted.length > 0) {
-            const latestDay = sorted[sorted.length - 1].date;
-            setSelectedDay(latestDay);
+          setRawData(sorted);
+          if (sorted.length > 0) {
+            setSelectedDay(sorted[sorted.length - 1].date);
           }
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [granularity]);
+  }, []); // only once on mount
+
+  // Aggregate hourly rows into daily totals client-side
+  const dailyData: ChartRow[] = (() => {
+    const byDate = new Map<string, ChartRow>();
+    for (const row of rawData) {
+      const existing = byDate.get(row.date);
+      if (existing) {
+        existing.calls_ok += row.calls_ok;
+        existing.calls_failed += row.calls_failed;
+        existing.calls_rate_limited += row.calls_rate_limited;
+        existing.cache_hits += row.cache_hits;
+        existing.input_tokens += row.input_tokens;
+        existing.output_tokens += row.output_tokens;
+        existing.total_latency_s += row.total_latency_s;
+        existing.model = row.model; // use latest model
+      } else {
+        byDate.set(row.date, { ...row, label: row.date });
+      }
+    }
+    return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  })();
 
   // Available days for the day picker (hourly mode)
-  const availableDays = [...new Set(data.map((r) => r.date))].sort();
+  const availableDays = [...new Set(rawData.map((r) => r.date))].sort();
 
   // For hourly: filter to selected day. For daily: last 30 entries.
   const chartData =
     granularity === "hourly"
-      ? data.filter((r) => r.date === selectedDay)
-      : data.slice(-30);
+      ? rawData.filter((r) => r.date === selectedDay)
+      : dailyData.slice(-30);
 
   // Format label for display
   const formatLabel = (label: string) => {
@@ -212,7 +232,7 @@ export default function AiStatsChart() {
     }
   };
 
-  if (loading && !data.length) {
+  if (loading && !rawData.length) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <p className="text-sm text-gray-500">Laddar graf...</p>
@@ -220,7 +240,7 @@ export default function AiStatsChart() {
     );
   }
 
-  if (!data.length) {
+  if (!rawData.length) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <p className="text-sm text-gray-500">
