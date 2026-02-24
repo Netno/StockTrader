@@ -166,7 +166,6 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
     volume = current.get("volume") or 0
 
     await db.save_price(ticker, price, volume)
-    await db.save_indicators(ticker, indicators)
 
     # 2. Relative strength vs OMXS30
     rs = calculate_relative_strength(df, index_df) if index_df is not None else None
@@ -175,7 +174,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
 
     in_position = ticker in open_positions
 
-    # 3. Pre-score (tekniska indikatorer utan sentiment) — gate för Gemini-anrop
+    # 3. Pre-score (tekniska indikatorer utan sentiment) — gate för AI-anrop
     pre_buy_score, _ = score_buy_signal(
         ticker, indicators, news_sentiment=None, insider_trades=None,
         has_open_report_soon=False, relative_strength=rs, market_regime=market_regime,
@@ -185,6 +184,10 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
         pre_sell_score, _ = score_sell_signal(
             ticker, indicators, open_positions[ticker], news_sentiment=None, relative_strength=rs
         )
+
+    # Spara live-score till stock_indicators så frontenden kan visa aktuell poäng
+    indicators["buy_score"] = pre_buy_score
+    await db.save_indicators(ticker, indicators)
 
     # Hämta nyheter (cachas 30 min — billigt)
     # Kör Gemini-sentimentanalys BARA om teknisk signal redan är lovande

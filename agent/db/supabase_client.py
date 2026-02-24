@@ -30,6 +30,7 @@ async def save_indicators(ticker: str, indicators: dict):
         "rsi", "macd", "macd_signal", "macd_histogram",
         "ma20", "ma50", "ma200", "ema20",
         "bollinger_upper", "bollinger_lower", "atr", "volume_ratio",
+        "buy_score",
     }
     get_client().table("stock_indicators").insert({
         "ticker": ticker,

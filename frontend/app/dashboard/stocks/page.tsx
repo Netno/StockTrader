@@ -140,7 +140,7 @@ export default async function StocksPage() {
                       </p>
                     </div>
                   )}
-                  <ScoreBadge score={sig?.score} />
+                  <ScoreBadge score={ind.buy_score ?? sig?.score} />
                 </div>
               </div>
 
