@@ -325,8 +325,14 @@ export default function AiStatsChart() {
         <BarChart
           data={chartData}
           margin={{ top: 4, right: 0, left: -20, bottom: 4 }}
+          style={{ backgroundColor: "#111827", borderRadius: "8px" }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#1f2937"
+            fill="#111827"
+            fillOpacity={0.8}
+          />
           <XAxis
             dataKey="label"
             tick={{ fill: "#6b7280", fontSize: 11 }}
@@ -337,7 +343,10 @@ export default function AiStatsChart() {
             height={30}
           />
           <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip
+            content={<CustomTooltip />}
+            cursor={{ fill: "rgba(59, 130, 246, 0.08)" }}
+          />
           <Legend
             wrapperStyle={{ fontSize: "11px", color: "#9ca3af" }}
             iconSize={10}
