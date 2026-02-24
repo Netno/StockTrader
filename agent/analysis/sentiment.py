@@ -32,6 +32,7 @@ async def _call_gemini(prompt: str, temperature: float = 0.1) -> str | None:
                 contents=prompt,
                 config=types.GenerateContentConfig(temperature=temperature),
             )
+            logger.info(f"AI-anrop OK ({GEMINI_MODEL})")
             return response.text.strip()
         except Exception as e:
             if _is_rate_limit(e) and attempt == 0:
