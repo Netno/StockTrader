@@ -15,6 +15,9 @@ from analysis.decision_engine import (
     score_buy_signal,
     score_sell_signal,
     calculate_position_size,
+    get_effective_buy_threshold,
+    get_effective_sell_threshold,
+    calculate_opportunity_score,
 )
 from notifications import ntfy
 from db import supabase_client as db
@@ -230,8 +233,10 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             ticker, indicators, position, latest_sentiment, relative_strength=rs
         )
 
-        # Sell threshold — separate from buy, lowered further in BEAR market
-        effective_sell_threshold = _settings.get_int("sell_threshold") - (10 if market_regime == "BEAR" else 0)
+        # Adaptive sell threshold by market regime
+        effective_sell_threshold = get_effective_sell_threshold(
+            _settings.get_int("sell_threshold"), market_regime=market_regime
+        )
         if sell_score >= effective_sell_threshold:
             confidence = min(99.0, float(sell_score))
             sell_reasons.append("Salj pa Avanza och stang positionen i appen")
@@ -264,23 +269,34 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             market_regime=market_regime,
         )
 
-        # Segment-differentiated threshold based on avg daily SEK turnover
-        # Large cap (>100M/dag): stricter threshold — more signals available, higher bar
-        # Mid cap (30–100M/dag): standard threshold
-        # Small cap (<30M/dag): same as standard (few signals, don't raise bar further)
+        # Adaptive buy threshold by market regime + liquidity segment
         base_threshold = _settings.get_int("signal_threshold")
         try:
             avg_turnover = (df["close"] * df["volume"]).mean()
-            if avg_turnover >= 100_000_000:
-                signal_threshold = base_threshold + 10  # Large cap: +10p
-                logger.debug(f"{ticker}: Large cap ({avg_turnover/1e6:.0f}M SEK/dag) — tröskel {signal_threshold}p")
-            else:
-                signal_threshold = base_threshold
+            signal_threshold = get_effective_buy_threshold(
+                base_threshold,
+                market_regime=market_regime,
+                avg_turnover=float(avg_turnover),
+            )
+            logger.debug(
+                f"{ticker}: adaptiv köp-tröskel {signal_threshold}p "
+                f"(regim={market_regime}, omsättning={avg_turnover/1e6:.0f}M/dag)"
+            )
         except Exception:
-            signal_threshold = base_threshold
+            signal_threshold = get_effective_buy_threshold(base_threshold, market_regime=market_regime)
 
         if buy_score < signal_threshold:
             return
+
+        candidate_atr = indicators.get("atr", 0)
+        candidate_atr_pct = (candidate_atr / price) if (candidate_atr and price > 0) else 0.0
+        candidate_opportunity = calculate_opportunity_score(
+            buy_score,
+            relative_strength=rs,
+            atr_pct=candidate_atr_pct,
+            volume_ratio=float(indicators.get("volume_ratio", 1.0) or 1.0),
+            market_regime=market_regime,
+        )
 
         # Positions full — check if rotation is warranted
         if len(open_positions) >= _settings.get_int("max_positions"):
@@ -288,7 +304,8 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             # Beräkna buy-score för varje position (som om vi analyserade den idag)
             # och jämför med kandidatens buy-score — samma skala
             weakest_ticker = None
-            weakest_buy_score = float('inf')  # lägst buy-score = svagast
+            weakest_opp_score = float('inf')  # lägst opportunity = svagast
+            weakest_buy_score = float('inf')
             weakest_indicators = {}
             weakest_current_price = 0.0
             for pos_ticker, pos in open_positions.items():
@@ -307,14 +324,25 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                     relative_strength=pos_rs,
                     market_regime=market_regime,
                 )
-                if pos_buy_score < weakest_buy_score:
+                pos_price = pos_indicators.get("current_price", pos.get("price", 0))
+                pos_atr = pos_indicators.get("atr", 0)
+                pos_atr_pct = (pos_atr / pos_price) if (pos_atr and pos_price > 0) else 0.0
+                pos_opp_score = calculate_opportunity_score(
+                    pos_buy_score,
+                    relative_strength=pos_rs,
+                    atr_pct=pos_atr_pct,
+                    volume_ratio=float(pos_indicators.get("volume_ratio", 1.0) or 1.0),
+                    market_regime=market_regime,
+                )
+                if pos_opp_score < weakest_opp_score:
+                    weakest_opp_score = pos_opp_score
                     weakest_buy_score = pos_buy_score
                     weakest_ticker = pos_ticker
                     weakest_indicators = pos_indicators
                     weakest_current_price = pos_indicators.get("current_price", pos["price"])
 
-            # Only rotate if new candidate is significantly better than weakest position
-            if weakest_ticker and buy_score > weakest_buy_score + 15:
+            # Rotate only if candidate is clearly better on risk-adjusted opportunity scale
+            if weakest_ticker and candidate_opportunity > weakest_opp_score + 8:
                 pos = open_positions[weakest_ticker]
                 # Använd aktuellt marknadspris — inte entry-pris
                 current_price_weak = weakest_current_price or pos["price"]
@@ -322,7 +350,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 pnl_kr = (current_price_weak - pos["price"]) * pos_qty
                 pnl_pct = ((current_price_weak - pos["price"]) / pos["price"]) * 100 if pos["price"] else 0
                 rotation_reasons = [
-                    f"Rotation: {ticker} ({buy_score}p) ar battre an {weakest_ticker} ({weakest_buy_score}p)",
+                    f"Rotation: {ticker} opportunity {candidate_opportunity:.1f} > {weakest_ticker} {weakest_opp_score:.1f}",
                     f"Salj {weakest_ticker} pa Avanza for att frigora kapital",
                 ]
                 await db.save_signal(
@@ -336,10 +364,13 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 )
                 logger.info(
                     f"ROTATION: Salj {weakest_ticker} for att kopa {ticker} | "
-                    f"ny buy_score={buy_score} > gammal buy_score={weakest_buy_score}"
+                    f"ny opp={candidate_opportunity:.1f} > gammal opp={weakest_opp_score:.1f}"
                 )
             else:
-                logger.debug(f"{ticker}: max positioner natt, ingen rotation motiverad (buy_score={buy_score} vs svagaste={weakest_buy_score}).")
+                logger.debug(
+                    f"{ticker}: max positioner natt, ingen rotation "
+                    f"(opp={candidate_opportunity:.1f} vs svagaste={weakest_opp_score:.1f})."
+                )
             return
 
         confidence = min(99.0, float(buy_score))

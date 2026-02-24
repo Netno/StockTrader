@@ -230,3 +230,94 @@ def calculate_position_size(confidence_pct: float, atr_pct: float = 0.0) -> floa
         size *= 0.70
 
     return round(size, 2)
+
+
+def get_effective_buy_threshold(
+    base_threshold: int,
+    market_regime: str = "NEUTRAL",
+    avg_turnover: Optional[float] = None,
+) -> int:
+    """Adaptive buy threshold based on market regime and liquidity segment.
+
+    Higher threshold in weak market and highly liquid names to reduce overtrading.
+    """
+    threshold = int(base_threshold)
+
+    # Regime adjustment
+    if market_regime == "BEAR":
+        threshold += 12
+    elif market_regime == "NEUTRAL":
+        threshold += 4
+    elif market_regime == "BULL_EARLY":
+        threshold += 0
+    elif market_regime == "BULL":
+        threshold -= 2
+
+    # Liquidity segment adjustment (SEK/day turnover)
+    if avg_turnover is not None:
+        if avg_turnover >= 100_000_000:
+            threshold += 8
+        elif avg_turnover < 15_000_000:
+            threshold += 3
+
+    # Safety clamps
+    return max(55, min(85, threshold))
+
+
+def get_effective_sell_threshold(base_threshold: int, market_regime: str = "NEUTRAL") -> int:
+    """Adaptive sell threshold.
+
+    In BEAR market we exit earlier; in BULL we require a slightly stronger sell signal.
+    """
+    threshold = int(base_threshold)
+    if market_regime == "BEAR":
+        threshold -= 10
+    elif market_regime == "NEUTRAL":
+        threshold -= 2
+    elif market_regime == "BULL":
+        threshold += 3
+    return max(40, min(75, threshold))
+
+
+def calculate_opportunity_score(
+    buy_score: float,
+    relative_strength: Optional[float] = None,
+    atr_pct: float = 0.0,
+    volume_ratio: float = 1.0,
+    market_regime: str = "NEUTRAL",
+) -> float:
+    """Risk-adjusted opportunity score used for ranking/rotation.
+
+    Starts from buy_score, then rewards strength/liquidity confirmation,
+    and penalizes high volatility and weak market regimes.
+    """
+    score = float(buy_score)
+
+    # Relative strength quality
+    if relative_strength is not None:
+        if relative_strength >= 1.15:
+            score += 8
+        elif relative_strength >= 1.05:
+            score += 4
+        elif relative_strength < 0.95:
+            score -= 6
+
+    # Volume confirmation
+    if volume_ratio >= 1.5:
+        score += 3
+    elif volume_ratio < 0.8:
+        score -= 2
+
+    # Volatility penalty
+    if atr_pct > 0.06:
+        score -= 8
+    elif atr_pct > 0.04:
+        score -= 4
+
+    # Regime context
+    if market_regime == "BEAR":
+        score -= 5
+    elif market_regime == "BULL":
+        score += 2
+
+    return round(score, 1)
