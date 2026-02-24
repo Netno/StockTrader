@@ -47,27 +47,25 @@ export default function AiStatsChart() {
   const [selectedDay, setSelectedDay] = useState<string>(""); // for hourly: which day
 
   useEffect(() => {
-    setLoading(true);
+    // Don't clear data during refetch — keeps chart visible and prevents scroll jump
     fetch(`${API}/api/ai-stats/history?granularity=${granularity}&days=30`, {
       cache: "no-store",
     })
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d)) {
-          // Sort chronologically (oldest first for chart)
           const sorted = [...d].sort((a, b) => {
             if (a.date !== b.date) return a.date.localeCompare(b.date);
             return (a.hour ?? 0) - (b.hour ?? 0);
           });
           setData(sorted);
-          // Auto-select latest day for hourly view
           if (granularity === "hourly" && sorted.length > 0) {
             const latestDay = sorted[sorted.length - 1].date;
             setSelectedDay(latestDay);
           }
         }
       })
-      .catch(() => setData([]))
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [granularity]);
 
@@ -214,7 +212,7 @@ export default function AiStatsChart() {
     }
   };
 
-  if (loading) {
+  if (loading && !data.length) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <p className="text-sm text-gray-500">Laddar graf...</p>
@@ -222,7 +220,7 @@ export default function AiStatsChart() {
     );
   }
 
-  if (!chartData.length) {
+  if (!data.length) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <p className="text-sm text-gray-500">
