@@ -44,6 +44,7 @@ export default function AiStatsChart() {
   const [metric, setMetric] = useState<Metric>("calls");
   const [data, setData] = useState<ChartRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<string>(""); // for hourly: which day
 
   useEffect(() => {
     setLoading(true);
@@ -59,25 +60,32 @@ export default function AiStatsChart() {
             return (a.hour ?? 0) - (b.hour ?? 0);
           });
           setData(sorted);
+          // Auto-select latest day for hourly view
+          if (granularity === "hourly" && sorted.length > 0) {
+            const latestDay = sorted[sorted.length - 1].date;
+            setSelectedDay(latestDay);
+          }
         }
       })
       .catch(() => setData([]))
       .finally(() => setLoading(false));
   }, [granularity]);
 
-  // For hourly, only show last 48 hours to keep chart readable
+  // Available days for the day picker (hourly mode)
+  const availableDays = [...new Set(data.map((r) => r.date))].sort();
+
+  // For hourly: filter to selected day. For daily: last 30 entries.
   const chartData =
-    granularity === "hourly" ? data.slice(-48) : data.slice(-30);
+    granularity === "hourly"
+      ? data.filter((r) => r.date === selectedDay)
+      : data.slice(-30);
 
   // Format label for display
   const formatLabel = (label: string) => {
     if (granularity === "hourly") {
-      // "2026-02-24 14:00" → "24/2 14:00"
+      // "2026-02-24 14:00" → "14:00"
       const parts = label.split(" ");
-      if (parts.length === 2) {
-        const [, m, d] = parts[0].split("-");
-        return `${parseInt(d)}/${parseInt(m)} ${parts[1]}`;
-      }
+      return parts.length === 2 ? parts[1] : label;
     }
     // "2026-02-24" → "24/2"
     const parts = label.split("-");
@@ -85,6 +93,14 @@ export default function AiStatsChart() {
       return `${parseInt(parts[2])}/${parseInt(parts[1])}`;
     }
     return label;
+  };
+
+  // Format day for display in picker: "2026-02-24" → "Mån 24/2"
+  const formatDay = (dateStr: string) => {
+    const d = new Date(dateStr + "T12:00:00");
+    const weekday = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"][d.getDay()];
+    const [, m, day] = dateStr.split("-");
+    return `${weekday} ${parseInt(day)}/${parseInt(m)}`;
   };
 
   // Get model from most recent entry
@@ -265,21 +281,40 @@ export default function AiStatsChart() {
         </div>
       </div>
 
+      {/* Day picker for hourly mode */}
+      {granularity === "hourly" && availableDays.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {availableDays.map((day) => (
+            <button
+              key={day}
+              onClick={() => setSelectedDay(day)}
+              className={`px-2.5 py-1 text-xs rounded-md transition ${
+                selectedDay === day
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-800 text-gray-400 hover:text-white border border-gray-700"
+              }`}
+            >
+              {formatDay(day)}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Chart */}
       <ResponsiveContainer width="100%" height={240}>
         <BarChart
           data={chartData}
-          margin={{ top: 4, right: 0, left: -20, bottom: 0 }}
+          margin={{ top: 4, right: 0, left: -20, bottom: 4 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
           <XAxis
             dataKey="label"
-            tick={{ fill: "#6b7280", fontSize: 10 }}
+            tick={{ fill: "#6b7280", fontSize: 11 }}
             tickFormatter={formatLabel}
-            interval={granularity === "hourly" ? 5 : 0}
-            angle={granularity === "hourly" ? -45 : 0}
-            textAnchor={granularity === "hourly" ? "end" : "middle"}
-            height={granularity === "hourly" ? 55 : 30}
+            interval={0}
+            angle={0}
+            textAnchor="middle"
+            height={30}
           />
           <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
           <Tooltip content={<CustomTooltip />} />
