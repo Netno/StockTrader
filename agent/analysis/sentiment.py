@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+from datetime import date
 from google import genai
 from google.genai import types
 from config import GEMINI_API_KEY, GEMINI_MODEL
@@ -20,6 +21,97 @@ _RATE_LIMIT_WAIT = 6  # sekunder att vänta vid 429 (Free Tier: 10 RPM = 6s/anro
 # Gemini API call counter (for logging)
 _gemini_call_count = 0
 
+# ── AI usage stats (persisted to Supabase) ────────────────────────
+_ai_stats = {
+    "date": str(date.today()),
+    "model": GEMINI_MODEL,
+    "calls_ok": 0,
+    "calls_failed": 0,
+    "calls_rate_limited": 0,
+    "cache_hits": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_latency_s": 0.0,
+    "by_type": {},  # t.ex. {"sentiment": 5, "description": 2}
+}
+_stats_loaded_for_date: str = ""  # tracks which date we've loaded from DB
+
+
+def _persist_stats():
+    """Save current stats to Supabase (fire-and-forget)."""
+    try:
+        from db.supabase_client import upsert_ai_stats
+        upsert_ai_stats(_ai_stats)
+    except Exception as e:
+        logger.warning(f"Kunde inte spara AI-stats till DB: {e}")
+
+
+def _try_load_from_db(today: str):
+    """Load today's stats from DB if they exist (handles restart/deploy)."""
+    global _stats_loaded_for_date
+    if _stats_loaded_for_date == today:
+        return
+    _stats_loaded_for_date = today
+    try:
+        from db.supabase_client import load_ai_stats_for_date
+        saved = load_ai_stats_for_date(today)
+        if saved:
+            _ai_stats.update({
+                "date": today,
+                "model": GEMINI_MODEL,
+                "calls_ok": saved.get("calls_ok", 0),
+                "calls_failed": saved.get("calls_failed", 0),
+                "calls_rate_limited": saved.get("calls_rate_limited", 0),
+                "cache_hits": saved.get("cache_hits", 0),
+                "input_tokens": saved.get("input_tokens", 0),
+                "output_tokens": saved.get("output_tokens", 0),
+                "total_latency_s": saved.get("total_latency_s", 0.0),
+                "by_type": saved.get("by_type", {}),
+            })
+            logger.info(f"[AI Stats] Laddade stats från DB för {today}: {saved['calls_ok']} anrop, {saved.get('cache_hits', 0)} cache-träffar")
+        else:
+            logger.info(f"[AI Stats] Inga sparade stats i DB för {today}, börjar från 0")
+    except Exception as e:
+        logger.warning(f"Kunde inte ladda AI-stats från DB: {e}")
+
+
+def _reset_stats_if_new_day():
+    today = str(date.today())
+    if _ai_stats["date"] != today:
+        _ai_stats.update({
+            "date": today,
+            "model": GEMINI_MODEL,
+            "calls_ok": 0,
+            "calls_failed": 0,
+            "calls_rate_limited": 0,
+            "cache_hits": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_latency_s": 0.0,
+            "by_type": {},
+        })
+    _try_load_from_db(today)
+
+
+def get_ai_stats() -> dict:
+    """Return current AI usage stats for the day."""
+    _reset_stats_if_new_day()
+    total_calls = _ai_stats["calls_ok"] + _ai_stats["calls_failed"]
+    avg_latency = (_ai_stats["total_latency_s"] / _ai_stats["calls_ok"]) if _ai_stats["calls_ok"] > 0 else 0
+    return {
+        **_ai_stats,
+        "total_calls": total_calls,
+        "avg_latency_s": round(avg_latency, 2),
+        "total_tokens": _ai_stats["input_tokens"] + _ai_stats["output_tokens"],
+    }
+
+
+def record_cache_hit(call_type: str = "sentiment"):
+    """Record a cache hit (no API call made)."""
+    _reset_stats_if_new_day()
+    _ai_stats["cache_hits"] += 1
+    _persist_stats()
+
 
 def _is_rate_limit(exc: Exception) -> bool:
     msg = str(exc).lower()
@@ -35,9 +127,14 @@ async def _call_gemini(prompt: str, temperature: float = 0.1, context: str = "")
         context: Beskrivning av anropet för loggning (t.ex. 'sentiment:EVO', 'description:SINCH:BUY').
     """
     global _gemini_call_count
+    _reset_stats_if_new_day()
     _gemini_call_count += 1
     call_id = _gemini_call_count
     prompt_len = len(prompt)
+
+    # Track call type (e.g. "sentiment" from "sentiment:EVO")
+    call_type = context.split(":")[0] if context else "unknown"
+    _ai_stats["by_type"][call_type] = _ai_stats["by_type"].get(call_type, 0) + 1
     
     logger.info(f"[Gemini #{call_id}] START {context} | modell={GEMINI_MODEL} | temp={temperature} | prompt={prompt_len} tecken")
     t0 = time.monotonic()
@@ -53,13 +150,27 @@ async def _call_gemini(prompt: str, temperature: float = 0.1, context: str = "")
             )
             elapsed = time.monotonic() - t0
             response_text = response.text.strip()
+
+            # Track token usage from response metadata
+            usage = getattr(response, "usage_metadata", None)
+            if usage:
+                _ai_stats["input_tokens"] += getattr(usage, "prompt_token_count", 0) or 0
+                _ai_stats["output_tokens"] += getattr(usage, "candidates_token_count", 0) or 0
+
+            _ai_stats["calls_ok"] += 1
+            _ai_stats["total_latency_s"] += elapsed
+            _persist_stats()
+
             logger.info(
                 f"[Gemini #{call_id}] OK {context} | {elapsed:.1f}s | svar={len(response_text)} tecken"
+                + (f" | tokens in={getattr(usage, 'prompt_token_count', '?')} out={getattr(usage, 'candidates_token_count', '?')}" if usage else "")
             )
             return response_text
         except Exception as e:
             elapsed = time.monotonic() - t0
             if _is_rate_limit(e) and attempt == 0:
+                _ai_stats["calls_rate_limited"] += 1
+                _persist_stats()
                 logger.warning(
                     f"[Gemini #{call_id}] RATE LIMIT {context} | {elapsed:.1f}s | "
                     f"väntar {_RATE_LIMIT_WAIT}s och försöker igen"
@@ -67,10 +178,14 @@ async def _call_gemini(prompt: str, temperature: float = 0.1, context: str = "")
                 await asyncio.sleep(_RATE_LIMIT_WAIT)
                 t0 = time.monotonic()  # reset timer för retry
                 continue
+            _ai_stats["calls_failed"] += 1
+            _persist_stats()
             logger.error(
                 f"[Gemini #{call_id}] FEL {context} | {elapsed:.1f}s | {type(e).__name__}: {e}"
             )
             return None
+    _ai_stats["calls_failed"] += 1
+    _persist_stats()
     return None
 
 
@@ -78,6 +193,7 @@ async def analyze_sentiment(ticker: str, headline: str) -> dict:
     """Send a news headline to Gemini for short-term sentiment analysis."""
     entry = _sentiment_cache.get(headline)
     if entry and time.monotonic() < entry[1]:
+        record_cache_hit("sentiment")
         logger.info(f"[Gemini CACHE HIT] sentiment:{ticker} | headline='{headline[:60]}...'")
         return entry[0]
 

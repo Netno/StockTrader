@@ -10,7 +10,7 @@ from data.yahoo_client import get_price_history, get_current_price, get_index_hi
 from data.news_fetcher import fetch_news
 from data.insider_fetcher import fetch_insider_trades
 from analysis.indicators import calculate_indicators, calculate_relative_strength, calculate_market_regime
-from analysis.sentiment import analyze_sentiment, generate_signal_description
+from analysis.sentiment import analyze_sentiment, generate_signal_description, record_cache_hit
 from analysis.decision_engine import (
     score_buy_signal,
     score_sell_signal,
@@ -40,6 +40,7 @@ async def _get_signal_description(ticker: str, signal_type: str, price: float, r
     now = _time.monotonic()
     cached = _description_cache.get(key)
     if cached and now < cached[1]:
+        record_cache_hit("description")
         logger.info(f"[Gemini CACHE HIT] description:{ticker}:{signal_type} | TTL={cached[1] - now:.0f}s kvar")
         return cached[0]
     logger.info(f"[Gemini CACHE MISS] description:{ticker}:{signal_type} | Genererar ny...")

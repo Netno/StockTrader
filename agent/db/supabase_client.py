@@ -74,6 +74,7 @@ async def confirm_signal(signal_id: str):
     get_client().table("stock_signals").update({
         "status": "confirmed",
         "executed": True,
+        "confirmed_at": _now(),
     }).eq("id", signal_id).execute()
 
 
@@ -272,3 +273,39 @@ async def get_portfolio_summary(initial_balance: float = PAPER_BALANCE) -> tuple
     current_value = cash + market_value
     pct = ((current_value - deposited) / deposited) * 100 if deposited else 0.0
     return round(current_value, 2), round(pct, 2)
+
+
+def upsert_ai_stats(stats: dict):
+    """Upsert today's AI stats to DB (stock_ai_stats table)."""
+    get_client().table("stock_ai_stats").upsert({
+        "date": stats["date"],
+        "model": stats.get("model", ""),
+        "calls_ok": stats.get("calls_ok", 0),
+        "calls_failed": stats.get("calls_failed", 0),
+        "calls_rate_limited": stats.get("calls_rate_limited", 0),
+        "cache_hits": stats.get("cache_hits", 0),
+        "input_tokens": stats.get("input_tokens", 0),
+        "output_tokens": stats.get("output_tokens", 0),
+        "total_latency_s": stats.get("total_latency_s", 0.0),
+        "by_type": stats.get("by_type", {}),
+        "updated_at": _now(),
+    }).execute()
+
+
+def load_ai_stats_for_date(date_str: str) -> dict | None:
+    """Load AI stats for a specific date from DB."""
+    result = get_client().table("stock_ai_stats").select("*").eq("date", date_str).limit(1).execute()
+    return result.data[0] if result.data else None
+
+
+def get_ai_stats_history(days: int = 30) -> list:
+    """Get AI stats history ordered by date desc."""
+    result = (
+        get_client()
+        .table("stock_ai_stats")
+        .select("*")
+        .order("date", desc=True)
+        .limit(days)
+        .execute()
+    )
+    return result.data or []

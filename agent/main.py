@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from scheduler import setup_scheduler, load_open_positions
 
 logging.basicConfig(
@@ -182,13 +183,21 @@ async def get_signals(limit: int = 50, status: str = None):
     return query.execute().data
 
 
+class ConfirmBody(BaseModel):
+    price: float | None = None
+    quantity: int | None = None
+
+
 @app.post("/api/signals/{signal_id}/confirm")
-async def confirm_signal(signal_id: str):
+async def confirm_signal(signal_id: str, body: ConfirmBody = None):
     """User confirms a pending BUY signal — creates a live trade."""
     from db.supabase_client import get_client, confirm_signal as db_confirm, save_trade
     from scheduler import open_positions, daily_trades
     import scheduler as _scheduler
     import settings as _settings
+
+    if body is None:
+        body = ConfirmBody()
 
     result = get_client().table("stock_signals").select("*").eq("id", signal_id).execute()
     if not result.data:
@@ -206,11 +215,15 @@ async def confirm_signal(signal_id: str):
     if len(open_positions) >= max_pos:
         return {"error": f"Max antal positioner ({max_pos}) uppnått"}
 
+    # Use user-supplied price/quantity or fall back to signal values
+    entry_price = body.price if body.price is not None else signal["price"]
+    quantity = body.quantity if body.quantity is not None else signal["quantity"]
+
     trade_id = await save_trade(
         ticker=signal["ticker"],
         signal_id=signal_id,
-        entry_price=signal["price"],
-        quantity=signal["quantity"],
+        entry_price=entry_price,
+        quantity=quantity,
         stop_loss=0.0,
         take_profit=0.0,
     )
@@ -219,13 +232,13 @@ async def confirm_signal(signal_id: str):
 
     open_positions[signal["ticker"]] = {
         "trade_id": trade_id,
-        "price": signal["price"],
-        "quantity": signal["quantity"],
+        "price": entry_price,
+        "quantity": quantity,
     }
 
     _scheduler.daily_trades += 1
 
-    return {"ok": True, "trade_id": trade_id, "ticker": signal["ticker"]}
+    return {"ok": True, "trade_id": trade_id, "ticker": signal["ticker"], "entry_price": entry_price, "quantity": quantity}
 
 
 @app.post("/api/signals/{signal_id}/reject")
@@ -251,12 +264,19 @@ async def get_trades(status: str = None):
     return query.execute().data
 
 
+class CloseBody(BaseModel):
+    price: float | None = None
+
+
 @app.post("/api/trades/{trade_id}/close")
-async def close_trade_manual(trade_id: str):
-    """Manually close an open position at current market price."""
+async def close_trade_manual(trade_id: str, body: CloseBody = None):
+    """Manually close an open position. User can supply actual sell price."""
     from db.supabase_client import get_client, close_trade
     from scheduler import open_positions
     from data.yahoo_client import get_current_price
+
+    if body is None:
+        body = CloseBody()
 
     result = get_client().table("stock_trades").select("*").eq("id", trade_id).execute()
     if not result.data:
@@ -267,11 +287,15 @@ async def close_trade_manual(trade_id: str):
         return {"error": "Handeln ar redan stangd"}
 
     ticker = trade["ticker"]
-    try:
-        current = await get_current_price(ticker)
-        exit_price = current.get("price") or trade["entry_price"]
-    except Exception:
-        exit_price = trade["entry_price"]
+
+    if body.price is not None:
+        exit_price = body.price
+    else:
+        try:
+            current = await get_current_price(ticker)
+            exit_price = current.get("price") or trade["entry_price"]
+        except Exception:
+            exit_price = trade["entry_price"]
 
     pnl_kr = (exit_price - trade["entry_price"]) * trade["quantity"]
     pnl_pct = ((exit_price - trade["entry_price"]) / trade["entry_price"]) * 100
@@ -456,6 +480,20 @@ async def reject_suggestion(suggestion_id: str):
     from db.supabase_client import get_client
     get_client().table("stock_suggestions").update({"status": "rejected"}).eq("id", suggestion_id).execute()
     return {"ok": True}
+
+
+@app.get("/api/ai-stats")
+async def get_ai_stats():
+    """Return AI usage stats for the current day."""
+    from analysis.sentiment import get_ai_stats
+    return get_ai_stats()
+
+
+@app.get("/api/ai-stats/history")
+async def get_ai_stats_history():
+    """Return AI stats history (last 30 days) from Supabase."""
+    from db.supabase_client import get_ai_stats_history
+    return get_ai_stats_history()
 
 
 @app.get("/api/settings")
