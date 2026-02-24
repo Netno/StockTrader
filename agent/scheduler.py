@@ -119,7 +119,7 @@ async def trading_loop():
             logger.error(f"Fel vid bearbetning av {ticker}: {e}", exc_info=True)
 
 
-async def process_ticker(ticker: str, stock_config: dict | None = None, index_df=None, market_regime: str = "NEUTRAL", stock_config_map: dict | None = None):
+async def process_ticker(ticker: str, stock_config: dict | None = None, index_df=None, market_regime: str = "NEUTRAL", stock_config_map: dict | None = None, manual: bool = False):
     global daily_signals, daily_trades
     now = datetime.now(timezone.utc)
     cfg = stock_config or {}
@@ -164,7 +164,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
     # Hämta nyheter (cachas 30 min — billigt)
     # Kör Gemini-sentimentanalys BARA om teknisk signal redan är lovande
     _SENTIMENT_GATE = 20  # poäng utan sentiment för att motivera AI-anrop
-    needs_sentiment = in_position or pre_buy_score >= _SENTIMENT_GATE or pre_sell_score >= _SENTIMENT_GATE
+    needs_sentiment = manual or in_position or pre_buy_score >= _SENTIMENT_GATE or pre_sell_score >= _SENTIMENT_GATE
 
     news_list = await fetch_news(ticker, company)
     latest_sentiment = None
@@ -185,7 +185,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             )
             if latest_sentiment is None:
                 latest_sentiment = sentiment
-        logger.info(f"{ticker}: sentimentanalys körd | resultat={latest_sentiment.get('sentiment') if latest_sentiment else 'NONE'} (pre_score buy={pre_buy_score} sell={pre_sell_score})")
+        logger.info(f"{ticker}: sentimentanalys körd{' (manuell)' if manual else ''} | resultat={latest_sentiment.get('sentiment') if latest_sentiment else 'NONE'} (pre_score buy={pre_buy_score} sell={pre_sell_score})")
     else:
         logger.debug(f"{ticker}: Gemini hoppas over (pre_score={pre_buy_score}p < {_SENTIMENT_GATE}p)")
 

@@ -633,8 +633,8 @@ async def trigger_single_ticker(ticker: str, background_tasks: BackgroundTasks):
     ticker = ticker.upper()
     watchlist = await get_watchlist()
     stock_config = next((s for s in watchlist if s["ticker"] == ticker), {})
-    background_tasks.add_task(process_ticker, ticker, stock_config)
-    return {"ok": True, "message": f"Analys av {ticker} startad i bakgrunden."}
+    background_tasks.add_task(process_ticker, ticker, stock_config, None, "NEUTRAL", None, True)
+    return {"ok": True, "message": f"Analys av {ticker} startad i bakgrunden (manuell, sentiment alltid på)."}
 
 
 @app.post("/api/notify-test")

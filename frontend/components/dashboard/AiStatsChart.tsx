@@ -116,7 +116,9 @@ export default function AiStatsChart() {
   // Format day for display in picker: "2026-02-24" → "Mån 24/2"
   const formatDay = (dateStr: string) => {
     const d = new Date(dateStr + "T12:00:00");
-    const weekday = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"][d.getDay()];
+    const weekday = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"][
+      d.getDay()
+    ];
     const [, m, day] = dateStr.split("-");
     return `${weekday} ${parseInt(day)}/${parseInt(m)}`;
   };
