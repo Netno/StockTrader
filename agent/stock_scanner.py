@@ -376,10 +376,14 @@ async def run_scan():
 
     # Send ntfy summary
     if replaced:
-        lines = "\n".join(
-            f"  {w['ticker']} ({w['score']:.0f}p) -> {c['ticker']} ({c['score']:.0f}p)"
-            for w, c in replaced[:3]
-        )
+        sections = []
+        for w, c in replaced[:3]:
+            top_reasons = c["reasons"][:3]
+            reasons_str = "\n".join(f"    ✓ {r}" for r in top_reasons)
+            sections.append(
+                f"  {w['ticker']} ({w['score']:.0f}p) → {c['ticker']} ({c['score']:.0f}p)\n{reasons_str}"
+            )
+        lines = "\n".join(sections)
         await ntfy._send(
             f"Watchlist uppdaterad – {len(replaced)} byte(n):\n{lines}",
             title="Watchlist uppdaterad",
