@@ -87,6 +87,13 @@ agent/
 - Inga brytande förändringar mot Supabase-schemat utan genomtänkt migration
 - httpx för HTTP-anrop (inte requests)
 
+### Supabase / Databas
+
+- **Row Level Security (RLS)** ska ALLTID aktiveras på nya tabeller: `ALTER TABLE public.<tabell> ENABLE ROW LEVEL SECURITY;`
+- Vid nya tabeller: inkludera alltid RLS-aktivering i SQL:en som ges till användaren
+- Alla tabeller använder `public`-schemat
+- Inga brytande schemaändringar utan migration-plan
+
 ---
 
 ## Frontend (frontend/)
