@@ -746,3 +746,45 @@ async def test_ai_stats_write():
                      "Tabellen saknas eller schema-fel" if not read_ok else
                      "Write error - se errors",
     }
+
+
+@app.get("/api/test-ai-gemini")
+async def test_ai_gemini_call():
+    """Make a real Gemini call and verify stats are persisted to DB."""
+    from analysis.sentiment import get_ai_stats, _ai_stats, _persist_stats
+    from db.supabase_client import get_client
+    import time as _time
+
+    # Snapshot before
+    before = {k: v for k, v in _ai_stats.items()}
+
+    # Make a real Gemini call
+    from analysis.sentiment import analyze_sentiment
+    t0 = _time.monotonic()
+    result = await analyze_sentiment("TEST", "Ericsson rapporterar rekordomsattning och hojer utdelningen")
+    elapsed = round(_time.monotonic() - t0, 2)
+
+    # Snapshot after
+    after = get_ai_stats()
+
+    # Check DB
+    db_row = None
+    try:
+        r = get_client().table("stock_ai_stats").select("*").eq("date", after["date"]).eq("hour", after["hour"]).limit(1).execute()
+        db_row = r.data[0] if r.data else None
+    except Exception as e:
+        db_row = {"error": str(e)}
+
+    return {
+        "gemini_result": result,
+        "elapsed_s": elapsed,
+        "stats_before_calls_ok": before.get("calls_ok", 0),
+        "stats_after_calls_ok": after.get("calls_ok", 0),
+        "stats_incremented": after.get("calls_ok", 0) > before.get("calls_ok", 0),
+        "db_row": db_row,
+        "db_has_data": db_row is not None and "error" not in db_row,
+        "diagnosis": (
+            "Gemini + DB persistence OK" if (db_row and "error" not in db_row and (db_row.get("calls_ok", 0) > 0 or db_row.get("cache_hits", 0) > 0))
+            else "Gemini OK men DB-row saknas" if result else "Gemini-anrop misslyckades"
+        ),
+    }
