@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import AiStatsChart from "../../components/dashboard/AiStatsChart";
+import AiStatsChart from "@/components/dashboard/AiStatsChart";
 
 const API = process.env.NEXT_PUBLIC_AGENT_URL ?? "http://localhost:8000";
 
