@@ -41,12 +41,20 @@ async def health():
     return {"status": "ok", "service": "aktiemotor"}
 
 
+_summary_cache: dict = {}
+_SUMMARY_TTL = 60  # sekunder — minskar Supabase+Yahoo-anrop från 4–6/minut till 1/minut
+
+
 @app.get("/api/summary")
 async def get_summary():
     """Portfolio summary: deposits → current value, with full P&L and available cash."""
+    import time as _time
     from db.supabase_client import get_client, get_total_deposited
     from data.yahoo_client import get_current_price
     from scheduler import open_positions
+
+    if _summary_cache.get("data") and _time.monotonic() < _summary_cache.get("expires", 0):
+        return _summary_cache["data"]
 
     # Total deposited capital (sum of all deposits)
     try:
@@ -85,7 +93,7 @@ async def get_summary():
     total_value = cash + market_value
     total_pct = ((total_value - total_deposited) / total_deposited) * 100 if total_deposited else 0.0
 
-    return {
+    result = {
         "total_deposited": round(total_deposited, 2),   # What you put in total
         "available_cash": round(cash, 2),               # Free to use right now
         "invested": round(invested, 2),                 # Locked in open positions (at cost)
@@ -95,6 +103,10 @@ async def get_summary():
         "total_value": round(total_value, 2),           # The number that matters
         "total_pct": round(total_pct, 2),               # Return vs total deposited
     }
+    import time as _time
+    _summary_cache["data"] = result
+    _summary_cache["expires"] = _time.monotonic() + _SUMMARY_TTL
+    return result
 
 
 @app.get("/api/deposits")

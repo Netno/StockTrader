@@ -5,7 +5,7 @@ import SignalActions from "@/components/dashboard/SignalActions";
 import TradeClose from "@/components/dashboard/TradeClose";
 import Link from "next/link";
 
-export const revalidate = 15;
+export const revalidate = 60;
 
 const notifIcon: Record<string, string> = {
   morning_summary: "☀",
