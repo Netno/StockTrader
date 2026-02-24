@@ -1,0 +1,295 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
+
+const API = process.env.NEXT_PUBLIC_AGENT_URL ?? "http://localhost:8000";
+
+type Granularity = "daily" | "hourly";
+type Metric = "calls" | "tokens" | "cache" | "latency";
+
+interface ChartRow {
+  label: string;
+  date: string;
+  hour?: number;
+  model?: string;
+  calls_ok: number;
+  calls_failed: number;
+  calls_rate_limited: number;
+  cache_hits: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens?: number;
+  total_latency_s: number;
+}
+
+const METRICS: { key: Metric; label: string }[] = [
+  { key: "calls", label: "Anrop" },
+  { key: "tokens", label: "Tokens" },
+  { key: "cache", label: "Cache" },
+  { key: "latency", label: "Svarstid" },
+];
+
+export default function AiStatsChart() {
+  const [granularity, setGranularity] = useState<Granularity>("daily");
+  const [metric, setMetric] = useState<Metric>("calls");
+  const [data, setData] = useState<ChartRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API}/api/ai-stats/history?granularity=${granularity}&days=30`, {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) {
+          // Sort chronologically (oldest first for chart)
+          const sorted = [...d].sort((a, b) => {
+            if (a.date !== b.date) return a.date.localeCompare(b.date);
+            return (a.hour ?? 0) - (b.hour ?? 0);
+          });
+          setData(sorted);
+        }
+      })
+      .catch(() => setData([]))
+      .finally(() => setLoading(false));
+  }, [granularity]);
+
+  // For hourly, only show last 48 hours to keep chart readable
+  const chartData =
+    granularity === "hourly" ? data.slice(-48) : data.slice(-30);
+
+  // Format label for display
+  const formatLabel = (label: string) => {
+    if (granularity === "hourly") {
+      // "2026-02-24 14:00" → "24/2 14:00"
+      const parts = label.split(" ");
+      if (parts.length === 2) {
+        const [, m, d] = parts[0].split("-");
+        return `${parseInt(d)}/${parseInt(m)} ${parts[1]}`;
+      }
+    }
+    // "2026-02-24" → "24/2"
+    const parts = label.split("-");
+    if (parts.length === 3) {
+      return `${parseInt(parts[2])}/${parseInt(parts[1])}`;
+    }
+    return label;
+  };
+
+  // Get model from most recent entry
+  const currentModel = chartData.length
+    ? chartData[chartData.length - 1]?.model || "–"
+    : "–";
+
+  // Custom tooltip
+  const CustomTooltip = ({
+    active,
+    payload,
+    label,
+  }: {
+    active?: boolean;
+    payload?: Array<{ name: string; value: number; color: string }>;
+    label?: string;
+  }) => {
+    if (!active || !payload?.length) return null;
+    const row = chartData.find((d) => d.label === label);
+    return (
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 text-xs shadow-lg">
+        <p className="text-gray-400 mb-1">{label}</p>
+        {row?.model && (
+          <p className="text-blue-400 mb-2 font-mono text-[10px]">
+            {row.model}
+          </p>
+        )}
+        {payload.map((p, i) => (
+          <p key={i} style={{ color: p.color }}>
+            {p.name}: {p.value.toLocaleString("sv-SE")}
+            {metric === "latency" ? "s" : ""}
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  const renderBars = () => {
+    switch (metric) {
+      case "calls":
+        return (
+          <>
+            <Bar
+              dataKey="calls_ok"
+              name="Lyckade"
+              fill="#22c55e"
+              radius={[2, 2, 0, 0]}
+              stackId="calls"
+            />
+            <Bar
+              dataKey="calls_rate_limited"
+              name="Rate limited"
+              fill="#f97316"
+              radius={[0, 0, 0, 0]}
+              stackId="calls"
+            />
+            <Bar
+              dataKey="calls_failed"
+              name="Misslyckade"
+              fill="#ef4444"
+              radius={[2, 2, 0, 0]}
+              stackId="calls"
+            />
+          </>
+        );
+      case "tokens":
+        return (
+          <>
+            <Bar
+              dataKey="input_tokens"
+              name="Input"
+              fill="#3b82f6"
+              radius={[2, 2, 0, 0]}
+              stackId="tokens"
+            />
+            <Bar
+              dataKey="output_tokens"
+              name="Output"
+              fill="#8b5cf6"
+              radius={[2, 2, 0, 0]}
+              stackId="tokens"
+            />
+          </>
+        );
+      case "cache":
+        return (
+          <>
+            <Bar
+              dataKey="cache_hits"
+              name="Cache-träffar"
+              fill="#06b6d4"
+              radius={[2, 2, 0, 0]}
+            />
+            <Bar
+              dataKey="calls_ok"
+              name="API-anrop"
+              fill="#6366f1"
+              radius={[2, 2, 0, 0]}
+            />
+          </>
+        );
+      case "latency":
+        return (
+          <Bar
+            dataKey="total_latency_s"
+            name="Total latency"
+            fill="#eab308"
+            radius={[2, 2, 0, 0]}
+          />
+        );
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <p className="text-sm text-gray-500">Laddar graf...</p>
+      </div>
+    );
+  }
+
+  if (!chartData.length) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <p className="text-sm text-gray-500">
+          Ingen AI-historik att visa ännu.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+      {/* Header with model badge */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-white">AI-anrop</h3>
+          <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20 font-mono">
+            {currentModel}
+          </span>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-wrap gap-2">
+        {/* Granularity toggle */}
+        <div className="flex rounded-lg overflow-hidden border border-gray-700">
+          {(["daily", "hourly"] as Granularity[]).map((g) => (
+            <button
+              key={g}
+              onClick={() => setGranularity(g)}
+              className={`px-3 py-1.5 text-xs font-medium transition ${
+                granularity === g
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-800 text-gray-400 hover:text-white"
+              }`}
+            >
+              {g === "daily" ? "Per dag" : "Per timme"}
+            </button>
+          ))}
+        </div>
+
+        {/* Metric toggle */}
+        <div className="flex rounded-lg overflow-hidden border border-gray-700">
+          {METRICS.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => setMetric(m.key)}
+              className={`px-3 py-1.5 text-xs font-medium transition ${
+                metric === m.key
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-800 text-gray-400 hover:text-white"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart
+          data={chartData}
+          margin={{ top: 4, right: 0, left: -20, bottom: 0 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#6b7280", fontSize: 10 }}
+            tickFormatter={formatLabel}
+            interval={granularity === "hourly" ? 5 : 0}
+            angle={granularity === "hourly" ? -45 : 0}
+            textAnchor={granularity === "hourly" ? "end" : "middle"}
+            height={granularity === "hourly" ? 55 : 30}
+          />
+          <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} />
+          <Tooltip content={<CustomTooltip />} />
+          <Legend
+            wrapperStyle={{ fontSize: "11px", color: "#9ca3af" }}
+            iconSize={10}
+          />
+          {renderBars()}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}

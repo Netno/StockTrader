@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from google import genai
 from google.genai import types
 from config import GEMINI_API_KEY, GEMINI_MODEL
@@ -21,9 +21,13 @@ _RATE_LIMIT_WAIT = 6  # sekunder att vänta vid 429 (Free Tier: 10 RPM = 6s/anro
 # Gemini API call counter (for logging)
 _gemini_call_count = 0
 
-# ── AI usage stats (persisted to Supabase) ────────────────────────
+# ── AI usage stats (persisted to Supabase, per hour) ──────────────
+def _current_hour() -> int:
+    return datetime.now(timezone.utc).hour
+
 _ai_stats = {
     "date": str(date.today()),
+    "hour": _current_hour(),
     "model": GEMINI_MODEL,
     "calls_ok": 0,
     "calls_failed": 0,
@@ -34,7 +38,11 @@ _ai_stats = {
     "total_latency_s": 0.0,
     "by_type": {},  # t.ex. {"sentiment": 5, "description": 2}
 }
-_stats_loaded_for_date: str = ""  # tracks which date we've loaded from DB
+_stats_loaded_for_key: str = ""  # tracks which date+hour we've loaded from DB
+
+
+def _stats_key() -> str:
+    return f"{_ai_stats['date']}_{_ai_stats['hour']}"
 
 
 def _persist_stats():
@@ -46,18 +54,20 @@ def _persist_stats():
         logger.warning(f"Kunde inte spara AI-stats till DB: {e}")
 
 
-def _try_load_from_db(today: str):
-    """Load today's stats from DB if they exist (handles restart/deploy)."""
-    global _stats_loaded_for_date
-    if _stats_loaded_for_date == today:
+def _try_load_from_db(today: str, hour: int):
+    """Load this hour's stats from DB if they exist (handles restart/deploy)."""
+    global _stats_loaded_for_key
+    key = f"{today}_{hour}"
+    if _stats_loaded_for_key == key:
         return
-    _stats_loaded_for_date = today
+    _stats_loaded_for_key = key
     try:
-        from db.supabase_client import load_ai_stats_for_date
-        saved = load_ai_stats_for_date(today)
+        from db.supabase_client import load_ai_stats_for_date_hour
+        saved = load_ai_stats_for_date_hour(today, hour)
         if saved:
             _ai_stats.update({
                 "date": today,
+                "hour": hour,
                 "model": GEMINI_MODEL,
                 "calls_ok": saved.get("calls_ok", 0),
                 "calls_failed": saved.get("calls_failed", 0),
@@ -68,18 +78,21 @@ def _try_load_from_db(today: str):
                 "total_latency_s": saved.get("total_latency_s", 0.0),
                 "by_type": saved.get("by_type", {}),
             })
-            logger.info(f"[AI Stats] Laddade stats från DB för {today}: {saved['calls_ok']} anrop, {saved.get('cache_hits', 0)} cache-träffar")
+            logger.info(f"[AI Stats] Laddade stats från DB för {today} H{hour}: {saved['calls_ok']} anrop")
         else:
-            logger.info(f"[AI Stats] Inga sparade stats i DB för {today}, börjar från 0")
+            logger.info(f"[AI Stats] Inga sparade stats i DB för {today} H{hour}, börjar från 0")
     except Exception as e:
         logger.warning(f"Kunde inte ladda AI-stats från DB: {e}")
 
 
-def _reset_stats_if_new_day():
+def _reset_stats_if_new_period():
+    """Reset stats if date or hour changed."""
     today = str(date.today())
-    if _ai_stats["date"] != today:
+    hour = _current_hour()
+    if _ai_stats["date"] != today or _ai_stats["hour"] != hour:
         _ai_stats.update({
             "date": today,
+            "hour": hour,
             "model": GEMINI_MODEL,
             "calls_ok": 0,
             "calls_failed": 0,
@@ -90,12 +103,12 @@ def _reset_stats_if_new_day():
             "total_latency_s": 0.0,
             "by_type": {},
         })
-    _try_load_from_db(today)
+    _try_load_from_db(today, hour)
 
 
 def get_ai_stats() -> dict:
-    """Return current AI usage stats for the day."""
-    _reset_stats_if_new_day()
+    """Return current AI usage stats for the current hour."""
+    _reset_stats_if_new_period()
     total_calls = _ai_stats["calls_ok"] + _ai_stats["calls_failed"]
     avg_latency = (_ai_stats["total_latency_s"] / _ai_stats["calls_ok"]) if _ai_stats["calls_ok"] > 0 else 0
     return {
@@ -108,7 +121,7 @@ def get_ai_stats() -> dict:
 
 def record_cache_hit(call_type: str = "sentiment"):
     """Record a cache hit (no API call made)."""
-    _reset_stats_if_new_day()
+    _reset_stats_if_new_period()
     _ai_stats["cache_hits"] += 1
     _persist_stats()
 
@@ -127,7 +140,7 @@ async def _call_gemini(prompt: str, temperature: float = 0.1, context: str = "")
         context: Beskrivning av anropet för loggning (t.ex. 'sentiment:EVO', 'description:SINCH:BUY').
     """
     global _gemini_call_count
-    _reset_stats_if_new_day()
+    _reset_stats_if_new_period()
     _gemini_call_count += 1
     call_id = _gemini_call_count
     prompt_len = len(prompt)

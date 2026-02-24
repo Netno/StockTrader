@@ -484,16 +484,73 @@ async def reject_suggestion(suggestion_id: str):
 
 @app.get("/api/ai-stats")
 async def get_ai_stats():
-    """Return AI usage stats for the current day."""
+    """Return AI usage stats for the current hour + daily totals."""
     from analysis.sentiment import get_ai_stats
-    return get_ai_stats()
+    from db.supabase_client import get_ai_stats_history
+    stats = get_ai_stats()
+    # Also compute daily totals from all hourly rows for today
+    try:
+        all_rows = get_ai_stats_history(days=1)
+        today_rows = [r for r in all_rows if r["date"] == stats["date"]]
+        daily = {
+            "calls_ok": sum(r["calls_ok"] for r in today_rows),
+            "calls_failed": sum(r["calls_failed"] for r in today_rows),
+            "calls_rate_limited": sum(r["calls_rate_limited"] for r in today_rows),
+            "cache_hits": sum(r["cache_hits"] for r in today_rows),
+            "input_tokens": sum(r["input_tokens"] for r in today_rows),
+            "output_tokens": sum(r["output_tokens"] for r in today_rows),
+            "total_latency_s": sum(r["total_latency_s"] for r in today_rows),
+        }
+        daily["total_calls"] = daily["calls_ok"] + daily["calls_failed"]
+        daily["total_tokens"] = daily["input_tokens"] + daily["output_tokens"]
+        daily["avg_latency_s"] = round(daily["total_latency_s"] / daily["calls_ok"], 2) if daily["calls_ok"] > 0 else 0
+    except Exception:
+        daily = stats
+    return {**stats, "daily_totals": daily}
 
 
 @app.get("/api/ai-stats/history")
-async def get_ai_stats_history():
-    """Return AI stats history (last 30 days) from Supabase."""
-    from db.supabase_client import get_ai_stats_history
-    return get_ai_stats_history()
+async def get_ai_stats_history(granularity: str = "daily", days: int = 30):
+    """Return AI stats history. granularity=daily aggregates per day, hourly returns raw rows."""
+    from db.supabase_client import get_ai_stats_history as fetch_history
+    rows = fetch_history(days=days)
+
+    if granularity == "hourly":
+        # Return raw hourly rows, add label
+        for r in rows:
+            r["label"] = f"{r['date']} {r['hour']:02d}:00"
+        return rows
+
+    # Aggregate by day
+    from collections import defaultdict
+    by_day: dict = defaultdict(lambda: {
+        "calls_ok": 0, "calls_failed": 0, "calls_rate_limited": 0,
+        "cache_hits": 0, "input_tokens": 0, "output_tokens": 0,
+        "total_latency_s": 0.0, "model": "", "by_type": {},
+    })
+    for r in rows:
+        d = by_day[r["date"]]
+        d["calls_ok"] += r["calls_ok"]
+        d["calls_failed"] += r["calls_failed"]
+        d["calls_rate_limited"] += r["calls_rate_limited"]
+        d["cache_hits"] += r["cache_hits"]
+        d["input_tokens"] += r["input_tokens"]
+        d["output_tokens"] += r["output_tokens"]
+        d["total_latency_s"] += r["total_latency_s"]
+        d["model"] = r.get("model", "")
+        # Merge by_type
+        for k, v in (r.get("by_type") or {}).items():
+            d["by_type"][k] = d["by_type"].get(k, 0) + v
+
+    result = []
+    for dt in sorted(by_day.keys()):
+        d = by_day[dt]
+        d["date"] = dt
+        d["label"] = dt
+        d["total_tokens"] = d["input_tokens"] + d["output_tokens"]
+        d["avg_latency_s"] = round(d["total_latency_s"] / d["calls_ok"], 2) if d["calls_ok"] > 0 else 0
+        result.append(d)
+    return result
 
 
 @app.get("/api/settings")

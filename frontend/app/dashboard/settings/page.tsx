@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import AiStatsChart from "../../components/dashboard/AiStatsChart";
 
 const API = process.env.NEXT_PUBLIC_AGENT_URL ?? "http://localhost:8000";
 
 interface AiStats {
   date: string;
+  hour: number;
   model: string;
   calls_ok: number;
   calls_failed: number;
@@ -18,6 +20,18 @@ interface AiStats {
   avg_latency_s: number;
   total_latency_s: number;
   by_type: Record<string, number>;
+  daily_totals: {
+    calls_ok: number;
+    calls_failed: number;
+    calls_rate_limited: number;
+    cache_hits: number;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    total_calls: number;
+    avg_latency_s: number;
+    total_latency_s: number;
+  };
 }
 
 interface AiStatsHistoryRow {
@@ -199,25 +213,26 @@ export default function SettingsPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-gray-800 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-white">
-                {aiStats.calls_ok}
+                {aiStats.daily_totals?.calls_ok ?? aiStats.calls_ok}
               </p>
               <p className="text-xs text-gray-500">Lyckade anrop</p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-red-400">
-                {aiStats.calls_failed}
+                {aiStats.daily_totals?.calls_failed ?? aiStats.calls_failed}
               </p>
               <p className="text-xs text-gray-500">Misslyckade</p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-orange-400">
-                {aiStats.calls_rate_limited}
+                {aiStats.daily_totals?.calls_rate_limited ??
+                  aiStats.calls_rate_limited}
               </p>
               <p className="text-xs text-gray-500">Rate limited</p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-green-400">
-                {aiStats.cache_hits}
+                {aiStats.daily_totals?.cache_hits ?? aiStats.cache_hits}
               </p>
               <p className="text-xs text-gray-500">Cache-träffar</p>
             </div>
@@ -227,19 +242,25 @@ export default function SettingsPage() {
             <div className="bg-gray-800 rounded-lg p-3">
               <p className="text-xs text-gray-500 mb-1">Input tokens</p>
               <p className="text-lg font-bold text-white">
-                {aiStats.input_tokens.toLocaleString("sv-SE")}
+                {(
+                  aiStats.daily_totals?.input_tokens ?? aiStats.input_tokens
+                ).toLocaleString("sv-SE")}
               </p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3">
               <p className="text-xs text-gray-500 mb-1">Output tokens</p>
               <p className="text-lg font-bold text-white">
-                {aiStats.output_tokens.toLocaleString("sv-SE")}
+                {(
+                  aiStats.daily_totals?.output_tokens ?? aiStats.output_tokens
+                ).toLocaleString("sv-SE")}
               </p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3">
               <p className="text-xs text-gray-500 mb-1">Totalt tokens</p>
               <p className="text-lg font-bold text-white">
-                {aiStats.total_tokens.toLocaleString("sv-SE")}
+                {(
+                  aiStats.daily_totals?.total_tokens ?? aiStats.total_tokens
+                ).toLocaleString("sv-SE")}
               </p>
             </div>
           </div>
@@ -248,13 +269,17 @@ export default function SettingsPage() {
             <div className="bg-gray-800 rounded-lg p-3">
               <p className="text-xs text-gray-500 mb-1">Snitt svarstid</p>
               <p className="text-lg font-bold text-white">
-                {aiStats.avg_latency_s}s
+                {aiStats.daily_totals?.avg_latency_s ?? aiStats.avg_latency_s}s
               </p>
             </div>
             <div className="bg-gray-800 rounded-lg p-3">
               <p className="text-xs text-gray-500 mb-1">Total tid i AI</p>
               <p className="text-lg font-bold text-white">
-                {aiStats.total_latency_s.toFixed(1)}s
+                {(
+                  aiStats.daily_totals?.total_latency_s ??
+                  aiStats.total_latency_s
+                ).toFixed(1)}
+                s
               </p>
             </div>
           </div>
@@ -285,6 +310,9 @@ export default function SettingsPage() {
           <p className="text-sm text-gray-500">Laddar AI-statistik...</p>
         </div>
       )}
+
+      {/* AI Stats Chart */}
+      <AiStatsChart />
 
       {/* AI Stats History */}
       {aiHistory.length > 0 && (

@@ -276,9 +276,10 @@ async def get_portfolio_summary(initial_balance: float = PAPER_BALANCE) -> tuple
 
 
 def upsert_ai_stats(stats: dict):
-    """Upsert today's AI stats to DB (stock_ai_stats table)."""
+    """Upsert this hour's AI stats to DB (stock_ai_stats table)."""
     get_client().table("stock_ai_stats").upsert({
         "date": stats["date"],
+        "hour": stats.get("hour", 0),
         "model": stats.get("model", ""),
         "calls_ok": stats.get("calls_ok", 0),
         "calls_failed": stats.get("calls_failed", 0),
@@ -292,20 +293,29 @@ def upsert_ai_stats(stats: dict):
     }).execute()
 
 
-def load_ai_stats_for_date(date_str: str) -> dict | None:
-    """Load AI stats for a specific date from DB."""
-    result = get_client().table("stock_ai_stats").select("*").eq("date", date_str).limit(1).execute()
+def load_ai_stats_for_date_hour(date_str: str, hour: int) -> dict | None:
+    """Load AI stats for a specific date+hour from DB."""
+    result = (
+        get_client()
+        .table("stock_ai_stats")
+        .select("*")
+        .eq("date", date_str)
+        .eq("hour", hour)
+        .limit(1)
+        .execute()
+    )
     return result.data[0] if result.data else None
 
 
 def get_ai_stats_history(days: int = 30) -> list:
-    """Get AI stats history ordered by date desc."""
+    """Get AI stats history (all hourly rows) ordered by date+hour desc."""
     result = (
         get_client()
         .table("stock_ai_stats")
         .select("*")
         .order("date", desc=True)
-        .limit(days)
+        .order("hour", desc=True)
+        .limit(days * 24)
         .execute()
     )
     return result.data or []
