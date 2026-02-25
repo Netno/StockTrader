@@ -74,7 +74,14 @@ const YAHOO_SYMBOLS: Record<string, string> = {
   'RATO B':   'RATO-B.ST',
   'VBG B':    'VBG-B.ST',
   'ADDT B':   'ADDT-B.ST',
+  'HOLMEN B': 'HOLM-B.ST',
   'OMXS30':   '^OMX',
+}
+
+// Smart fallback for tickers not in the explicit map:
+// "ARJO B" → "ARJO-B.ST", "CAMX" → "CAMX.ST"
+function resolveSymbol(ticker: string): string {
+  return YAHOO_SYMBOLS[ticker] ?? `${ticker.replace(/ /g, '-')}.ST`
 }
 
 const HEADERS = {
@@ -89,7 +96,7 @@ export async function GET(
 ) {
   const { ticker: rawTicker } = await params
   const ticker = decodeURIComponent(rawTicker)
-  const symbol = YAHOO_SYMBOLS[ticker] ?? ticker
+  const symbol = resolveSymbol(ticker)
   const type = req.nextUrl.searchParams.get('type') ?? 'price'
 
   try {

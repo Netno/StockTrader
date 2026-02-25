@@ -10,6 +10,7 @@ Rotation mode (positions >= MAX_POSITIONS):
   After market close, scans for stronger candidates and rotates out the
   weakest watchlist stock if the improvement is significant.
 """
+import asyncio
 import logging
 from datetime import datetime, timezone
 from data.yahoo_client import get_price_history, get_index_history
@@ -368,6 +369,9 @@ async def discovery_scan():
             errors += 1
             logger.warning(f"  {ticker}: fel — {e}")
 
+        # Throttle to avoid Yahoo rate-limiting (max ~5 req/s)
+        await asyncio.sleep(0.25)
+
     if not results:
         logger.warning("Discovery scan returnerade inga resultat.")
         return {"scanned": scanned, "errors": errors, "market_regime": market_regime,
@@ -494,6 +498,9 @@ async def run_scan():
                 logger.debug(f"  {ticker}: filtrerad – {reasons[0] if reasons else '?'}")
         except Exception as e:
             logger.warning(f"  {ticker}: fel – {e}")
+
+        # Throttle to avoid Yahoo rate-limiting
+        await asyncio.sleep(0.25)
 
     if not results:
         logger.warning("Skanning returnerade inga resultat.")
