@@ -686,20 +686,43 @@ async def insert_test_signal():
     }
 
 
-@app.post("/api/discovery-scan")
-async def trigger_discovery_scan():
-    """Manually trigger a discovery scan of the full stock universe.
-    Runs synchronously and returns the result."""
+# Track running discovery scan state
+_discovery_scan_running = False
+_discovery_scan_result = None
+
+async def _run_discovery_scan_bg():
+    """Background task that runs discovery scan and saves to DB."""
+    global _discovery_scan_running, _discovery_scan_result
     from stock_scanner import discovery_scan
     try:
         result = await discovery_scan()
-        return {
-            "ok": True,
-            **(result or {}),
-        }
+        _discovery_scan_result = {"ok": True, **(result or {})}
     except Exception as e:
         logger.error(f"Discovery scan misslyckades: {e}", exc_info=True)
-        return {"ok": False, "error": str(e)}
+        _discovery_scan_result = {"ok": False, "error": str(e)}
+    finally:
+        _discovery_scan_running = False
+
+@app.post("/api/discovery-scan")
+async def trigger_discovery_scan():
+    """Trigger a discovery scan in the background. Returns immediately.
+    Poll /api/discovery-scan/status or /api/discovery-scan/latest for results."""
+    global _discovery_scan_running, _discovery_scan_result
+    if _discovery_scan_running:
+        return {"ok": True, "status": "already_running"}
+    _discovery_scan_running = True
+    _discovery_scan_result = None
+    import asyncio
+    asyncio.create_task(_run_discovery_scan_bg())
+    return {"ok": True, "status": "started"}
+
+@app.get("/api/discovery-scan/status")
+async def discovery_scan_status():
+    """Check if a discovery scan is currently running."""
+    return {
+        "running": _discovery_scan_running,
+        "has_result": _discovery_scan_result is not None,
+    }
 
 
 @app.get("/api/discovery-scan/latest")

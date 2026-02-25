@@ -260,18 +260,60 @@ export default function SettingsPage() {
             setShowFiltered(false);
             setShowErrors(false);
             try {
+              // Trigger scan in background
               const res = await fetch(`${API}/api/discovery-scan`, {
                 method: "POST",
                 cache: "no-store",
               });
-              const data: DiscoveryResult = await res.json();
-              setDiscoveryResult(data);
+              const startData = await res.json();
+              if (!startData.ok) {
+                setDiscoveryResult({
+                  ok: false,
+                  error: startData.error ?? "Kunde inte starta scan.",
+                });
+                setDiscoveryRunning(false);
+                return;
+              }
+              // Poll for result every 10 seconds
+              const poll = setInterval(async () => {
+                try {
+                  const statusRes = await fetch(
+                    `${API}/api/discovery-scan/status`,
+                    { cache: "no-store" },
+                  );
+                  const status = await statusRes.json();
+                  if (!status.running) {
+                    clearInterval(poll);
+                    // Fetch the saved result
+                    const latestRes = await fetch(
+                      `${API}/api/discovery-scan/latest`,
+                      { cache: "no-store" },
+                    );
+                    const latest = await latestRes.json();
+                    if (latest.ok) {
+                      setDiscoveryResult(latest);
+                    } else {
+                      setDiscoveryResult({
+                        ok: false,
+                        error: "Scan klar men kunde inte hämta resultat.",
+                      });
+                    }
+                    setDiscoveryRunning(false);
+                  }
+                } catch {
+                  // Keep polling on network errors
+                }
+              }, 10000);
+              // Safety timeout after 8 minutes
+              setTimeout(() => {
+                clearInterval(poll);
+                setDiscoveryRunning(false);
+              }, 480000);
             } catch {
               setDiscoveryResult({
                 ok: false,
                 error: "Nätverksfel — kunde inte nå agenten.",
               });
-            } finally {
               setDiscoveryRunning(false);
             }
           }}
@@ -310,7 +352,10 @@ export default function SettingsPage() {
                 {/* Tidsstämpel */}
                 {discoveryResult.scanned_at && (
                   <p className="text-xs text-gray-600">
-                    Senaste scan: {new Date(discoveryResult.scanned_at).toLocaleString("sv-SE")}
+                    Senaste scan:{" "}
+                    {new Date(discoveryResult.scanned_at).toLocaleString(
+                      "sv-SE",
+                    )}
                   </p>
                 )}
 
@@ -322,7 +367,9 @@ export default function SettingsPage() {
                       {discoveryResult.scanned}
                     </span>
                     {discoveryResult.total_universe && (
-                      <span className="text-gray-600">/{discoveryResult.total_universe}</span>
+                      <span className="text-gray-600">
+                        /{discoveryResult.total_universe}
+                      </span>
                     )}
                   </span>
                   <span className="bg-gray-800 rounded-lg px-3 py-1.5">
@@ -356,7 +403,9 @@ export default function SettingsPage() {
                       <span className="text-orange-400 font-semibold">
                         {discoveryResult.filtered_count}
                       </span>
-                      <span className="text-gray-600 ml-1 text-xs">{showFiltered ? "▲" : "▼"}</span>
+                      <span className="text-gray-600 ml-1 text-xs">
+                        {showFiltered ? "▲" : "▼"}
+                      </span>
                     </span>
                   )}
                   {(discoveryResult.errors ?? 0) > 0 && (
@@ -368,36 +417,60 @@ export default function SettingsPage() {
                       <span className="text-red-400 font-semibold">
                         {discoveryResult.errors}
                       </span>
-                      <span className="text-gray-600 ml-1 text-xs">{showErrors ? "▲" : "▼"}</span>
+                      <span className="text-gray-600 ml-1 text-xs">
+                        {showErrors ? "▲" : "▼"}
+                      </span>
                     </span>
                   )}
                 </div>
 
                 {/* Filtered tickers (collapsible) */}
-                {showFiltered && discoveryResult.filtered && discoveryResult.filtered.length > 0 && (
-                  <div className="bg-gray-800 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
-                    <p className="text-xs font-semibold text-orange-400 mb-2">Filtrerade aktier</p>
-                    {discoveryResult.filtered.map((f) => (
-                      <div key={f.ticker} className="flex justify-between text-xs gap-2">
-                        <span className="text-gray-400 font-mono shrink-0">{f.ticker}</span>
-                        <span className="text-gray-500 text-right">{f.reason}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {showFiltered &&
+                  discoveryResult.filtered &&
+                  discoveryResult.filtered.length > 0 && (
+                    <div className="bg-gray-800 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+                      <p className="text-xs font-semibold text-orange-400 mb-2">
+                        Filtrerade aktier
+                      </p>
+                      {discoveryResult.filtered.map((f) => (
+                        <div
+                          key={f.ticker}
+                          className="flex justify-between text-xs gap-2"
+                        >
+                          <span className="text-gray-400 font-mono shrink-0">
+                            {f.ticker}
+                          </span>
+                          <span className="text-gray-500 text-right">
+                            {f.reason}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                 {/* Error tickers (collapsible) */}
-                {showErrors && discoveryResult.error_tickers && discoveryResult.error_tickers.length > 0 && (
-                  <div className="bg-gray-800 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
-                    <p className="text-xs font-semibold text-red-400 mb-2">Aktier med fel</p>
-                    {discoveryResult.error_tickers.map((e) => (
-                      <div key={e.ticker} className="flex justify-between text-xs gap-4">
-                        <span className="text-gray-400 font-mono shrink-0">{e.ticker}</span>
-                        <span className="text-red-400/70 truncate text-right">{e.error}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {showErrors &&
+                  discoveryResult.error_tickers &&
+                  discoveryResult.error_tickers.length > 0 && (
+                    <div className="bg-gray-800 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+                      <p className="text-xs font-semibold text-red-400 mb-2">
+                        Aktier med fel
+                      </p>
+                      {discoveryResult.error_tickers.map((e) => (
+                        <div
+                          key={e.ticker}
+                          className="flex justify-between text-xs gap-4"
+                        >
+                          <span className="text-gray-400 font-mono shrink-0">
+                            {e.ticker}
+                          </span>
+                          <span className="text-red-400/70 truncate text-right">
+                            {e.error}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                 {/* Candidates table */}
                 {discoveryResult.candidates &&
@@ -426,7 +499,13 @@ export default function SettingsPage() {
                               <tr
                                 key={c.ticker}
                                 className={`text-gray-300 cursor-pointer hover:bg-gray-700/50 transition ${expandedTicker === c.ticker ? "bg-gray-700/30" : ""}`}
-                                onClick={() => setExpandedTicker(expandedTicker === c.ticker ? null : c.ticker)}
+                                onClick={() =>
+                                  setExpandedTicker(
+                                    expandedTicker === c.ticker
+                                      ? null
+                                      : c.ticker,
+                                  )
+                                }
                               >
                                 <td className="px-4 py-2 text-gray-500 text-xs">
                                   {i + 1}
@@ -438,11 +517,14 @@ export default function SettingsPage() {
                                   <span className="text-gray-500 ml-2 text-xs">
                                     {c.name}
                                   </span>
-                                  {c.buy_reasons && c.buy_reasons.length > 0 && (
-                                    <span className="text-gray-600 ml-1 text-xs">
-                                      {expandedTicker === c.ticker ? "▲" : "▼"}
-                                    </span>
-                                  )}
+                                  {c.buy_reasons &&
+                                    c.buy_reasons.length > 0 && (
+                                      <span className="text-gray-600 ml-1 text-xs">
+                                        {expandedTicker === c.ticker
+                                          ? "▲"
+                                          : "▼"}
+                                      </span>
+                                    )}
                                 </td>
                                 <td className="px-4 py-2 text-right font-mono">
                                   <span
@@ -487,22 +569,30 @@ export default function SettingsPage() {
                           </tbody>
                         </table>
                         {/* Expanded buy reasons (below table) */}
-                        {expandedTicker && (() => {
-                          const c = discoveryResult.candidates?.find(x => x.ticker === expandedTicker);
-                          if (!c?.buy_reasons?.length) return null;
-                          return (
-                            <div className="px-4 py-3 border-t border-gray-700 bg-gray-750">
-                              <p className="text-xs text-gray-500 mb-1.5">Köpsignaler för {c.ticker}:</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {c.buy_reasons.map((r, ri) => (
-                                  <span key={ri} className="text-xs bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded">
-                                    {r}
-                                  </span>
-                                ))}
+                        {expandedTicker &&
+                          (() => {
+                            const c = discoveryResult.candidates?.find(
+                              (x) => x.ticker === expandedTicker,
+                            );
+                            if (!c?.buy_reasons?.length) return null;
+                            return (
+                              <div className="px-4 py-3 border-t border-gray-700 bg-gray-750">
+                                <p className="text-xs text-gray-500 mb-1.5">
+                                  Köpsignaler för {c.ticker}:
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {c.buy_reasons.map((r, ri) => (
+                                    <span
+                                      key={ri}
+                                      className="text-xs bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded"
+                                    >
+                                      {r}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })()}
+                            );
+                          })()}
                       </div>
                       {/* Mobile cards */}
                       <div className="sm:hidden divide-y divide-gray-700">
@@ -510,7 +600,11 @@ export default function SettingsPage() {
                           <div
                             key={c.ticker}
                             className="p-3 space-y-1 cursor-pointer"
-                            onClick={() => setExpandedTicker(expandedTicker === c.ticker ? null : c.ticker)}
+                            onClick={() =>
+                              setExpandedTicker(
+                                expandedTicker === c.ticker ? null : c.ticker,
+                              )
+                            }
                           >
                             <div className="flex items-center justify-between">
                               <div>
@@ -553,15 +647,20 @@ export default function SettingsPage() {
                                 </span>
                               </span>
                             </div>
-                            {expandedTicker === c.ticker && c.buy_reasons && c.buy_reasons.length > 0 && (
-                              <div className="flex flex-wrap gap-1 pt-1">
-                                {c.buy_reasons.map((r, ri) => (
-                                  <span key={ri} className="text-xs bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded">
-                                    {r}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                            {expandedTicker === c.ticker &&
+                              c.buy_reasons &&
+                              c.buy_reasons.length > 0 && (
+                                <div className="flex flex-wrap gap-1 pt-1">
+                                  {c.buy_reasons.map((r, ri) => (
+                                    <span
+                                      key={ri}
+                                      className="text-xs bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded"
+                                    >
+                                      {r}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                           </div>
                         ))}
                       </div>
