@@ -394,8 +394,11 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 # Konvertera opportunity-gap till procent (10p ≈ ~5% förväntad överprestanda)
                 # Krav: opportunity-gap måste överstiga transaktionskostnad + tau
                 opp_gap = candidate_opportunity - weakest_opp_score
-                # Minimum 8p gap + TC-krav
-                should_rotate = opp_gap > max(8, required_margin * 2)
+                # Minimum 5p gap + TC-krav
+                # Sänkt från 8 — med Avanza Start och large cap-spread är TC låg,
+                # men aktier i samma trend klustrar i opportunity score. 5p kräver
+                # fortfarande tydlig förbättring men tillåter rimlig rotation.
+                should_rotate = opp_gap > max(5, required_margin * 2)
 
                 if should_rotate:
                     pnl_kr = (current_price_weak - pos["price"]) * pos_qty
@@ -421,7 +424,7 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
                 else:
                     logger.debug(
                         f"{ticker}: rotation avvisad — gap {opp_gap:.1f}p < "
-                        f"krävd marginal {max(8, required_margin * 2):.1f}p "
+                        f"krävd marginal {max(5, required_margin * 2):.1f}p "
                         f"(TC={tc_total_pct:.2f}% + tau={rotation_tau:.1f}%)"
                     )
             return
@@ -465,8 +468,10 @@ async def process_ticker(ticker: str, stock_config: dict | None = None, index_df
             price * quantity, buy_reasons, confidence,
         )
 
-        # Cooldown 24h — förhindrar upprepade identiska signaler vid nästa tick
-        cooldowns[ticker] = now + timedelta(hours=24)
+        # Cooldown 4h — förhindrar spam men tillåter ny signal samma dag.
+        # Missar du kl 09:15 kan systemet signalera igen kl 13:15.
+        # 24h var för långt — blockerade reaktivitet vid genuina förändringar.
+        cooldowns[ticker] = now + timedelta(hours=4)
 
         daily_signals += 1
         logger.info(

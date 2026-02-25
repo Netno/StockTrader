@@ -251,6 +251,8 @@ def score_sell_signal(
     macd_signal_prev = indicators.get("macd_signal_prev")
 
     buy_price = position.get("price", 0)
+    macd_histogram = indicators.get("macd_histogram")
+    macd_histogram_prev = indicators.get("macd_histogram_prev")
 
     # RSI > 70 → +25p
     if rsi is not None and rsi > 70:
@@ -296,6 +298,15 @@ def score_sell_signal(
     if relative_strength is not None and relative_strength < 0.90:
         score += 15
         reasons.append(f"RS vs OMXS30: {(relative_strength - 1) * 100:.0f}% (underperformance)")
+
+    # Momentum avtar: MACD histogram positivt men sjunkande → +10p
+    # Fångar "momentum dying" INNAN teknisk breakdown (under MA50, MACD cross).
+    # Inte tillräckligt för att trigga ensam (tröskel 55–58p), men tippar
+    # balansen i kombination med andra varsignaler.
+    if (macd_histogram is not None and macd_histogram_prev is not None
+            and macd_histogram > 0 and macd_histogram < macd_histogram_prev):
+        score += 10
+        reasons.append(f"Momentum avtar: MACD histogram sjunkande ({macd_histogram:.4f})")
 
     return score, reasons
 
