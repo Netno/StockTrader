@@ -67,7 +67,7 @@ export default async function SuggestionsPage() {
                 </div>
                 <span className="text-xs text-gray-600 shrink-0">
                   {s.created_at
-                    ? new Date(s.created_at).toLocaleDateString("sv-SE")
+                    ? new Date(s.created_at).toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" })
                     : "–"}
                 </span>
               </div>

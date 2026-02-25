@@ -99,6 +99,7 @@ export default async function DashboardPage() {
                     <span className="text-xs text-gray-500">
                       {new Date(s.created_at).toLocaleString("sv-SE", {
                         day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                        timeZone: "Europe/Stockholm",
                       })}
                     </span>
                   </div>
@@ -201,7 +202,7 @@ export default async function DashboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-gray-300">{n.title}</p>
-                    <pre className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap font-sans leading-relaxed line-clamp-3">
+                    <pre className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap font-sans leading-relaxed">
                       {n.message}
                     </pre>
                   </div>
@@ -209,6 +210,7 @@ export default async function DashboardPage() {
                     {new Date(n.created_at).toLocaleTimeString("sv-SE", {
                       hour: "2-digit",
                       minute: "2-digit",
+                      timeZone: "Europe/Stockholm",
                     })}
                   </p>
                 </div>

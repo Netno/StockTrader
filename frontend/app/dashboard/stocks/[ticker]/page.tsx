@@ -207,7 +207,7 @@ export default async function StockDetailPage({
                     {signals.map((s: any) => (
                       <tr key={s.id} className="hover:bg-gray-800/30">
                         <td className="p-4 text-gray-400 whitespace-nowrap">
-                          {new Date(s.created_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                          {new Date(s.created_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm" })}
                         </td>
                         <td className="p-4">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.signal_type === "BUY" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
@@ -246,7 +246,7 @@ export default async function StockDetailPage({
                         {s.signal_type === "BUY" ? "KÖP" : "SÄLJ"}
                       </span>
                       <span className="text-xs text-gray-500">
-                        {new Date(s.created_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        {new Date(s.created_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm" })}
                       </span>
                     </div>
 
@@ -300,7 +300,7 @@ export default async function StockDetailPage({
                     <p className="text-xs text-gray-600 mt-0.5 italic">{item.gemini_reason}</p>
                   )}
                   <p className="text-xs text-gray-600 mt-0.5">
-                    {item.source} · {item.published_at ? new Date(item.published_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–"}
+                    {item.source} · {item.published_at ? new Date(item.published_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm" }) : "–"}
                   </p>
                 </div>
                 <span className="text-xs font-mono text-gray-600 shrink-0">
@@ -328,8 +328,8 @@ export default async function StockDetailPage({
                   <pre className="text-xs text-gray-400 mt-1 whitespace-pre-wrap font-sans leading-relaxed">{n.message}</pre>
                 </div>
                 <div className="text-xs text-gray-600 shrink-0 text-right pt-0.5">
-                  <div>{new Date(n.created_at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })}</div>
-                  <div>{new Date(n.created_at).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}</div>
+                  <div>{new Date(n.created_at).toLocaleDateString("sv-SE", { day: "numeric", month: "short", timeZone: "Europe/Stockholm" })}</div>
+                  <div>{new Date(n.created_at).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm" })}</div>
                 </div>
               </div>
             ))

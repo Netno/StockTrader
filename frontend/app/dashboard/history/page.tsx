@@ -83,13 +83,13 @@ export default async function HistoryPage() {
                 <tr key={t.id} className="hover:bg-gray-800/30 transition">
                   <td className="p-4 text-gray-400 whitespace-nowrap text-xs">
                     {new Date(t.opened_at).toLocaleString("sv-SE", {
-                      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm",
                     })}
                   </td>
                   <td className="p-4 text-gray-400 whitespace-nowrap text-xs">
                     {t.closed_at
                       ? new Date(t.closed_at).toLocaleString("sv-SE", {
-                          day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                          day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm",
                         })
                       : "–"}
                   </td>
@@ -166,9 +166,9 @@ export default async function HistoryPage() {
               {/* Row 3: dates + close reason */}
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="text-xs text-gray-500 space-y-0.5">
-                  <p>Öppnad: {new Date(t.opened_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  <p>Öppnad: {new Date(t.opened_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm" })}</p>
                   {t.closed_at && (
-                    <p>Stängd: {new Date(t.closed_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                    <p>Stängd: {new Date(t.closed_at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm" })}</p>
                   )}
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-full ${

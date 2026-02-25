@@ -38,6 +38,7 @@ export default function SignalTable({ signals }: { signals: Signal[] }) {
                   day: "numeric",
                   hour: "2-digit",
                   minute: "2-digit",
+                  timeZone: "Europe/Stockholm",
                 })}
               </td>
               <td className="py-2 pr-4 font-semibold">{s.ticker}</td>

@@ -66,6 +66,7 @@ export default async function SignalsPage() {
                         month: "short",
                         hour: "2-digit",
                         minute: "2-digit",
+                        timeZone: "Europe/Stockholm",
                       })}
                     </span>
                   </div>
@@ -146,6 +147,7 @@ export default async function SignalsPage() {
                     month: "short",
                     hour: "2-digit",
                     minute: "2-digit",
+                    timeZone: "Europe/Stockholm",
                   })}
                 </td>
                 <td className="p-4 font-semibold">
@@ -237,6 +239,7 @@ export default async function SignalsPage() {
                   month: "short",
                   hour: "2-digit",
                   minute: "2-digit",
+                  timeZone: "Europe/Stockholm",
                 })}
               </span>
             </div>

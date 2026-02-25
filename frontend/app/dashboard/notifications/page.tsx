@@ -105,8 +105,8 @@ export default async function NotificationsPage() {
 
                 {/* Timestamp */}
                 <div className="text-xs text-gray-600 shrink-0 text-right pt-0.5">
-                  <div>{new Date(n.created_at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })}</div>
-                  <div>{new Date(n.created_at).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}</div>
+                  <div>{new Date(n.created_at).toLocaleDateString("sv-SE", { day: "numeric", month: "short", timeZone: "Europe/Stockholm" })}</div>
+                  <div>{new Date(n.created_at).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm" })}</div>
                 </div>
               </div>
             );
