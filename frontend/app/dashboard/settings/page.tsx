@@ -12,16 +12,32 @@ interface DiscoveryCandidate {
   candidate_score: number;
   buy_pre_score: number;
   reasons: string[];
+  buy_reasons?: string[];
   is_positioned: boolean;
+}
+
+interface FilteredTicker {
+  ticker: string;
+  reason: string;
+}
+
+interface ErrorTicker {
+  ticker: string;
+  error: string;
 }
 
 interface DiscoveryResult {
   ok: boolean;
   scanned?: number;
   errors?: number;
+  filtered_count?: number;
+  total_universe?: number;
   market_regime?: string;
   watchlist_size?: number;
   candidates?: DiscoveryCandidate[];
+  filtered?: FilteredTicker[];
+  error_tickers?: ErrorTicker[];
+  scanned_at?: string;
   error?: string;
 }
 
@@ -114,7 +130,11 @@ export default function SettingsPage() {
   const [aiStats, setAiStats] = useState<AiStats | null>(null);
   const [aiHistory, setAiHistory] = useState<AiStatsHistoryRow[]>([]);
   const [discoveryRunning, setDiscoveryRunning] = useState(false);
-  const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
+  const [discoveryResult, setDiscoveryResult] =
+    useState<DiscoveryResult | null>(null);
+  const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
+  const [showFiltered, setShowFiltered] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/api/settings`, { cache: "no-store" })
@@ -128,6 +148,13 @@ export default function SettingsPage() {
     fetch(`${API}/api/ai-stats/history`, { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setAiHistory(Array.isArray(d) ? d : []))
+      .catch(() => {});
+    // Load latest discovery scan from DB
+    fetch(`${API}/api/discovery-scan/latest`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok) setDiscoveryResult(d);
+      })
       .catch(() => {});
   }, []);
 
@@ -229,6 +256,9 @@ export default function SettingsPage() {
           onClick={async () => {
             setDiscoveryRunning(true);
             setDiscoveryResult(null);
+            setExpandedTicker(null);
+            setShowFiltered(false);
+            setShowErrors(false);
             try {
               const res = await fetch(`${API}/api/discovery-scan`, {
                 method: "POST",
@@ -237,7 +267,10 @@ export default function SettingsPage() {
               const data: DiscoveryResult = await res.json();
               setDiscoveryResult(data);
             } catch {
-              setDiscoveryResult({ ok: false, error: "Nätverksfel — kunde inte nå agenten." });
+              setDiscoveryResult({
+                ok: false,
+                error: "Nätverksfel — kunde inte nå agenten.",
+              });
             } finally {
               setDiscoveryRunning(false);
             }
@@ -248,8 +281,20 @@ export default function SettingsPage() {
           {discoveryRunning ? (
             <span className="flex items-center gap-2">
               <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
               Skannar aktier...
             </span>
@@ -262,112 +307,271 @@ export default function SettingsPage() {
           <div className="space-y-3">
             {discoveryResult.ok ? (
               <>
+                {/* Tidsstämpel */}
+                {discoveryResult.scanned_at && (
+                  <p className="text-xs text-gray-600">
+                    Senaste scan: {new Date(discoveryResult.scanned_at).toLocaleString("sv-SE")}
+                  </p>
+                )}
+
+                {/* Summary badges */}
                 <div className="flex flex-wrap gap-3 text-sm">
                   <span className="bg-gray-800 rounded-lg px-3 py-1.5">
                     <span className="text-gray-500">Skannade: </span>
-                    <span className="text-white font-semibold">{discoveryResult.scanned}</span>
+                    <span className="text-white font-semibold">
+                      {discoveryResult.scanned ?? discoveryResult.scanned_count}
+                    </span>
+                    {discoveryResult.total_universe && (
+                      <span className="text-gray-600">/{discoveryResult.total_universe}</span>
+                    )}
                   </span>
                   <span className="bg-gray-800 rounded-lg px-3 py-1.5">
                     <span className="text-gray-500">I watchlist: </span>
-                    <span className="text-white font-semibold">{discoveryResult.watchlist_size}</span>
+                    <span className="text-white font-semibold">
+                      {discoveryResult.watchlist_size}
+                    </span>
                   </span>
                   <span className="bg-gray-800 rounded-lg px-3 py-1.5">
                     <span className="text-gray-500">Marknad: </span>
-                    <span className={`font-semibold ${
-                      discoveryResult.market_regime === "BULLISH" ? "text-green-400" :
-                      discoveryResult.market_regime === "BEARISH" ? "text-red-400" : "text-yellow-400"
-                    }`}>{discoveryResult.market_regime}</span>
+                    <span
+                      className={`font-semibold ${
+                        discoveryResult.market_regime === "BULL"
+                          ? "text-green-400"
+                          : discoveryResult.market_regime === "BULL_EARLY"
+                            ? "text-green-300"
+                            : discoveryResult.market_regime === "BEAR"
+                              ? "text-red-400"
+                              : "text-yellow-400"
+                      }`}
+                    >
+                      {discoveryResult.market_regime}
+                    </span>
                   </span>
-                  {(discoveryResult.errors ?? 0) > 0 && (
-                    <span className="bg-gray-800 rounded-lg px-3 py-1.5">
+                  {(discoveryResult.filtered_count ?? 0) > 0 && (
+                    <span
+                      className="bg-gray-800 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-gray-700 transition"
+                      onClick={() => setShowFiltered(!showFiltered)}
+                    >
+                      <span className="text-gray-500">Filtrerade: </span>
+                      <span className="text-orange-400 font-semibold">
+                        {discoveryResult.filtered_count}
+                      </span>
+                      <span className="text-gray-600 ml-1 text-xs">{showFiltered ? "▲" : "▼"}</span>
+                    </span>
+                  )}
+                  {((discoveryResult.errors ?? discoveryResult.error_count) ?? 0) > 0 && (
+                    <span
+                      className="bg-gray-800 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-gray-700 transition"
+                      onClick={() => setShowErrors(!showErrors)}
+                    >
                       <span className="text-gray-500">Fel: </span>
-                      <span className="text-red-400 font-semibold">{discoveryResult.errors}</span>
+                      <span className="text-red-400 font-semibold">
+                        {discoveryResult.errors ?? discoveryResult.error_count}
+                      </span>
+                      <span className="text-gray-600 ml-1 text-xs">{showErrors ? "▲" : "▼"}</span>
                     </span>
                   )}
                 </div>
 
-                {discoveryResult.candidates && discoveryResult.candidates.length > 0 && (
-                  <div className="bg-gray-800 rounded-lg overflow-hidden">
-                    <div className="px-4 py-2 border-b border-gray-700">
-                      <p className="text-xs font-semibold text-gray-400">Topp-kandidater i ny watchlist</p>
-                    </div>
-                    {/* Desktop table */}
-                    <div className="hidden sm:block">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-xs text-gray-500 border-b border-gray-700">
-                            <th className="px-4 py-2">#</th>
-                            <th className="px-4 py-2">Aktie</th>
-                            <th className="px-4 py-2 text-right">Kombi</th>
-                            <th className="px-4 py-2 text-right">Köp-pre</th>
-                            <th className="px-4 py-2 text-right">Kandidat</th>
-                            <th className="px-4 py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700">
-                          {discoveryResult.candidates.map((c, i) => (
-                            <tr key={c.ticker} className="text-gray-300">
-                              <td className="px-4 py-2 text-gray-500 text-xs">{i + 1}</td>
-                              <td className="px-4 py-2">
-                                <span className="text-white font-semibold">{c.ticker}</span>
-                                <span className="text-gray-500 ml-2 text-xs">{c.name}</span>
-                              </td>
-                              <td className="px-4 py-2 text-right font-mono">
-                                <span className={c.combined_score >= 50 ? "text-green-400" : c.combined_score >= 30 ? "text-yellow-400" : "text-gray-400"}>
-                                  {c.combined_score.toFixed(0)}p
-                                </span>
-                              </td>
-                              <td className="px-4 py-2 text-right font-mono">
-                                <span className={c.buy_pre_score >= 40 ? "text-green-400" : "text-gray-400"}>
-                                  {c.buy_pre_score.toFixed(0)}p
-                                </span>
-                              </td>
-                              <td className="px-4 py-2 text-right font-mono text-gray-400">
-                                {c.candidate_score.toFixed(0)}p
-                              </td>
-                              <td className="px-4 py-2">
-                                {c.is_positioned ? (
-                                  <span className="text-xs bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">Position</span>
-                                ) : (
-                                  <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">Ny</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {/* Mobile cards */}
-                    <div className="sm:hidden divide-y divide-gray-700">
-                      {discoveryResult.candidates.map((c, i) => (
-                        <div key={c.ticker} className="p-3 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="text-white font-semibold">{i + 1}. {c.ticker}</span>
-                              <span className="text-gray-500 ml-2 text-xs">{c.name}</span>
-                            </div>
-                            {c.is_positioned && (
-                              <span className="text-xs bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">Position</span>
-                            )}
-                          </div>
-                          <div className="flex gap-3 text-xs">
-                            <span>
-                              <span className="text-gray-500">Kombi </span>
-                              <span className={c.combined_score >= 50 ? "text-green-400 font-semibold" : "text-gray-300"}>{c.combined_score.toFixed(0)}p</span>
-                            </span>
-                            <span>
-                              <span className="text-gray-500">Köp </span>
-                              <span className={c.buy_pre_score >= 40 ? "text-green-400 font-semibold" : "text-gray-300"}>{c.buy_pre_score.toFixed(0)}p</span>
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                {/* Filtered tickers (collapsible) */}
+                {showFiltered && discoveryResult.filtered && discoveryResult.filtered.length > 0 && (
+                  <div className="bg-gray-800 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+                    <p className="text-xs font-semibold text-orange-400 mb-2">Filtrerade aktier</p>
+                    {discoveryResult.filtered.map((f) => (
+                      <div key={f.ticker} className="flex justify-between text-xs gap-2">
+                        <span className="text-gray-400 font-mono shrink-0">{f.ticker}</span>
+                        <span className="text-gray-500 text-right">{f.reason}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
+
+                {/* Error tickers (collapsible) */}
+                {showErrors && discoveryResult.error_tickers && discoveryResult.error_tickers.length > 0 && (
+                  <div className="bg-gray-800 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+                    <p className="text-xs font-semibold text-red-400 mb-2">Aktier med fel</p>
+                    {discoveryResult.error_tickers.map((e) => (
+                      <div key={e.ticker} className="flex justify-between text-xs gap-4">
+                        <span className="text-gray-400 font-mono shrink-0">{e.ticker}</span>
+                        <span className="text-red-400/70 truncate text-right">{e.error}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Candidates table */}
+                {discoveryResult.candidates &&
+                  discoveryResult.candidates.length > 0 && (
+                    <div className="bg-gray-800 rounded-lg overflow-hidden">
+                      <div className="px-4 py-2 border-b border-gray-700">
+                        <p className="text-xs font-semibold text-gray-400">
+                          Topp-kandidater i ny watchlist
+                        </p>
+                      </div>
+                      {/* Desktop table */}
+                      <div className="hidden sm:block">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs text-gray-500 border-b border-gray-700">
+                              <th className="px-4 py-2">#</th>
+                              <th className="px-4 py-2">Aktie</th>
+                              <th className="px-4 py-2 text-right">Kombi</th>
+                              <th className="px-4 py-2 text-right">Köp-pre</th>
+                              <th className="px-4 py-2 text-right">Kandidat</th>
+                              <th className="px-4 py-2">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-700">
+                            {discoveryResult.candidates.map((c, i) => (
+                              <tr
+                                key={c.ticker}
+                                className={`text-gray-300 cursor-pointer hover:bg-gray-700/50 transition ${expandedTicker === c.ticker ? "bg-gray-700/30" : ""}`}
+                                onClick={() => setExpandedTicker(expandedTicker === c.ticker ? null : c.ticker)}
+                              >
+                                <td className="px-4 py-2 text-gray-500 text-xs">
+                                  {i + 1}
+                                </td>
+                                <td className="px-4 py-2">
+                                  <span className="text-white font-semibold">
+                                    {c.ticker}
+                                  </span>
+                                  <span className="text-gray-500 ml-2 text-xs">
+                                    {c.name}
+                                  </span>
+                                  {c.buy_reasons && c.buy_reasons.length > 0 && (
+                                    <span className="text-gray-600 ml-1 text-xs">
+                                      {expandedTicker === c.ticker ? "▲" : "▼"}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2 text-right font-mono">
+                                  <span
+                                    className={
+                                      c.combined_score >= 50
+                                        ? "text-green-400"
+                                        : c.combined_score >= 30
+                                          ? "text-yellow-400"
+                                          : "text-gray-400"
+                                    }
+                                  >
+                                    {c.combined_score.toFixed(0)}p
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-right font-mono">
+                                  <span
+                                    className={
+                                      c.buy_pre_score >= 40
+                                        ? "text-green-400"
+                                        : "text-gray-400"
+                                    }
+                                  >
+                                    {c.buy_pre_score.toFixed(0)}p
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-right font-mono text-gray-400">
+                                  {c.candidate_score.toFixed(0)}p
+                                </td>
+                                <td className="px-4 py-2">
+                                  {c.is_positioned ? (
+                                    <span className="text-xs bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">
+                                      Position
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">
+                                      Ny
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {/* Expanded buy reasons (below table) */}
+                        {expandedTicker && (() => {
+                          const c = discoveryResult.candidates?.find(x => x.ticker === expandedTicker);
+                          if (!c?.buy_reasons?.length) return null;
+                          return (
+                            <div className="px-4 py-3 border-t border-gray-700 bg-gray-750">
+                              <p className="text-xs text-gray-500 mb-1.5">Köpsignaler för {c.ticker}:</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {c.buy_reasons.map((r, ri) => (
+                                  <span key={ri} className="text-xs bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded">
+                                    {r}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      {/* Mobile cards */}
+                      <div className="sm:hidden divide-y divide-gray-700">
+                        {discoveryResult.candidates.map((c, i) => (
+                          <div
+                            key={c.ticker}
+                            className="p-3 space-y-1 cursor-pointer"
+                            onClick={() => setExpandedTicker(expandedTicker === c.ticker ? null : c.ticker)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="text-white font-semibold">
+                                  {i + 1}. {c.ticker}
+                                </span>
+                                <span className="text-gray-500 ml-2 text-xs">
+                                  {c.name}
+                                </span>
+                              </div>
+                              {c.is_positioned && (
+                                <span className="text-xs bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">
+                                  Position
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex gap-3 text-xs">
+                              <span>
+                                <span className="text-gray-500">Kombi </span>
+                                <span
+                                  className={
+                                    c.combined_score >= 50
+                                      ? "text-green-400 font-semibold"
+                                      : "text-gray-300"
+                                  }
+                                >
+                                  {c.combined_score.toFixed(0)}p
+                                </span>
+                              </span>
+                              <span>
+                                <span className="text-gray-500">Köp </span>
+                                <span
+                                  className={
+                                    c.buy_pre_score >= 40
+                                      ? "text-green-400 font-semibold"
+                                      : "text-gray-300"
+                                  }
+                                >
+                                  {c.buy_pre_score.toFixed(0)}p
+                                </span>
+                              </span>
+                            </div>
+                            {expandedTicker === c.ticker && c.buy_reasons && c.buy_reasons.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                {c.buy_reasons.map((r, ri) => (
+                                  <span key={ri} className="text-xs bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded">
+                                    {r}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
               </>
             ) : (
-              <p className="text-sm text-red-400">{discoveryResult.error ?? "Okänt fel"}</p>
+              <p className="text-sm text-red-400">
+                {discoveryResult.error ?? "Okänt fel"}
+              </p>
             )}
           </div>
         )}
