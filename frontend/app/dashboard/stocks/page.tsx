@@ -107,12 +107,19 @@ export default async function StocksPage() {
     if (data) sigMap[data.ticker] = data;
   }
 
+  // Sort watchlist by buy_score (highest first), stocks without data last
+  const sortedWatchlist = [...(watchlist ?? [])].sort((a: any, b: any) => {
+    const scoreA = indMap[a.ticker]?.buy_score ?? -1;
+    const scoreB = indMap[b.ticker]?.buy_score ?? -1;
+    return scoreB - scoreA;
+  });
+
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold">Bevakningslista</h1>
 
       <div className="grid grid-cols-1 gap-4">
-        {(watchlist ?? []).map((stock: any) => {
+        {sortedWatchlist.map((stock: any) => {
           const ind = indMap[stock.ticker] ?? {};
           const priceRow = priceMap[stock.ticker];
           const sig = sigMap[stock.ticker];
