@@ -304,26 +304,34 @@ async def discovery_scan():
     logger.info(f"Marknadsregim: {market_regime}")
 
     results = []
+    filtered = []    # Tickers filtered by liquidity/history/data
+    error_tickers = []  # Tickers that threw exceptions
     scanned = 0
     errors = 0
 
     for ticker, name in STOCK_UNIVERSE.items():
         yahoo_symbol = YAHOO_SYMBOLS.get(ticker)
         if not yahoo_symbol:
+            filtered.append({"ticker": ticker, "reason": "Ingen Yahoo-symbol"})
             continue
         try:
             df = await get_price_history(ticker, days=220)
             if df.empty or len(df) < MIN_HISTORY_DAYS:
+                days_available = 0 if df.empty else len(df)
+                filtered.append({"ticker": ticker, "reason": f"För lite data: {days_available} dagar (min {MIN_HISTORY_DAYS})"})
                 continue
 
             indicators = calculate_indicators(df)
             if not indicators:
+                filtered.append({"ticker": ticker, "reason": "Indikatorberäkning misslyckades"})
                 continue
 
             # 1. Candidate score (liquidity, volatility, trend)
             cand_score, cand_reasons = score_candidate(ticker, indicators, df)
             if cand_score == 0:
-                logger.debug(f"  {ticker}: filtrerad — {cand_reasons[0] if cand_reasons else '?'}")
+                reason = cand_reasons[0] if cand_reasons else "okänd"
+                filtered.append({"ticker": ticker, "reason": reason})
+                logger.debug(f"  {ticker}: filtrerad — {reason}")
                 continue
 
             # 2. Technical buy pre-score (without sentiment — quick & free)
@@ -367,6 +375,7 @@ async def discovery_scan():
 
         except Exception as e:
             errors += 1
+            error_tickers.append({"ticker": ticker, "error": str(e)})
             logger.warning(f"  {ticker}: fel — {e}")
 
         # Throttle to avoid Yahoo rate-limiting
@@ -375,7 +384,8 @@ async def discovery_scan():
     if not results:
         logger.warning("Discovery scan returnerade inga resultat.")
         return {"scanned": scanned, "errors": errors, "market_regime": market_regime,
-                "watchlist_size": 0, "candidates": []}
+                "watchlist_size": 0, "candidates": [],
+                "filtered": filtered, "error_tickers": error_tickers}
 
     # Sort by combined score
     results.sort(key=lambda x: x["combined_score"], reverse=True)
@@ -423,7 +433,12 @@ async def discovery_scan():
         f"Topp 5 kandidater:\n{top5_str}"
     )
     if errors > 0:
-        msg += f"\n\n({errors} aktier kunde inte analyseras)"
+        msg += f"\n\n⚠ {errors} aktier kunde inte analyseras"
+        # Visa vilka aktier som failade
+        for et in error_tickers[:5]:
+            msg += f"\n  • {et['ticker']}: {et['error'][:60]}"
+    if filtered:
+        msg += f"\n\n{len(filtered)} aktier filtrerade (likviditet/data)"
 
     await ntfy._send(
         msg,
@@ -435,13 +450,15 @@ async def discovery_scan():
 
     logger.info(
         f"=== DISCOVERY SCAN KLAR === "
-        f"{scanned} skannade, {len(final_selection)} i watchlist, {errors} fel"
+        f"{scanned} skannade, {len(filtered)} filtrerade, {len(final_selection)} i watchlist, {errors} fel"
     )
 
     # Return structured result for API consumers
     return {
         "scanned": scanned,
         "errors": errors,
+        "filtered_count": len(filtered),
+        "total_universe": len(STOCK_UNIVERSE),
         "market_regime": market_regime,
         "watchlist_size": len(final_selection),
         "candidates": [
@@ -452,10 +469,13 @@ async def discovery_scan():
                 "candidate_score": r["candidate_score"],
                 "buy_pre_score": r["buy_pre_score"],
                 "reasons": r["reasons"][:3],
+                "buy_reasons": r["buy_reasons"][:5],
                 "is_positioned": r["is_positioned"],
             }
             for r in final_selection
         ],
+        "filtered": filtered,
+        "error_tickers": error_tickers,
     }
 
 
