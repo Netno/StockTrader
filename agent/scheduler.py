@@ -85,13 +85,11 @@ async def morning_check():
 async def morning_summary():
     """08:45 – Send morning push notification."""
     portfolio_value, portfolio_pct = await db.get_portfolio_summary(PAPER_BALANCE)
-    paused = [t for t, until in cooldowns.items() if until > datetime.now(timezone.utc)]
     await ntfy.send_morning_summary(
         portfolio_value=portfolio_value,
         portfolio_pct=portfolio_pct,
         open_positions=len(open_positions),
         reports_today=[],
-        paused_tickers=paused,
     )
 
 

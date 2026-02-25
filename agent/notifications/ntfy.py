@@ -75,16 +75,13 @@ async def send_morning_summary(
     portfolio_pct: float,
     open_positions: int,
     reports_today: list,
-    paused_tickers: list,
 ):
     reports_str = ", ".join(reports_today) if reports_today else "Inga"
-    paused_str = ", ".join(paused_tickers) if paused_tickers else "Inga"
     message = (
         f"Borsen oppnar om 15 min\n"
         f"Portfolj: {portfolio_value:.0f} kr ({portfolio_pct:+.1f}%)\n"
         f"Oppna positioner: {open_positions}\n"
-        f"Dagens rapporter: {reports_str}\n"
-        f"Pausade aktier: {paused_str}"
+        f"Dagens rapporter: {reports_str}"
     )
     await _send(message, title="Morgonsummering", priority="default",
                 tags=["sun"], notif_type="morning_summary")

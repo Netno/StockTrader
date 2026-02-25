@@ -64,7 +64,9 @@ export default function SignalTable({ signals }: { signals: Signal[] }) {
                       style={{ width: `${s.confidence}%` }}
                     />
                   </div>
-                  <span className="text-gray-400">{s.confidence?.toFixed(0)}%</span>
+                  <span className="text-gray-400">
+                    {s.confidence?.toFixed(0)}%
+                  </span>
                 </div>
               </td>
             </tr>

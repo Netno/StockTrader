@@ -20,14 +20,45 @@ interface Notification {
   created_at: string;
 }
 
-const typeConfig: Record<NotificationType, { label: string; color: string; icon: string }> = {
-  buy_signal:       { label: "Kopsignal",       color: "bg-green-500/15 text-green-400 border-green-500/30",  icon: "↑" },
-  sell_signal:      { label: "Saljsignal",       color: "bg-red-500/15 text-red-400 border-red-500/30",        icon: "↓" },
-  report_warning:   { label: "Rapportvarning",   color: "bg-amber-500/15 text-amber-400 border-amber-500/30",  icon: "!" },
-  morning_summary:  { label: "Morgonsummering",  color: "bg-blue-500/15 text-blue-400 border-blue-500/30",     icon: "☀" },
-  evening_summary:  { label: "Kvallssummering",  color: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30", icon: "☾" },
-  scan_suggestion:  { label: "Watchlist-forslag", color: "bg-purple-500/15 text-purple-400 border-purple-500/30", icon: "↕" },
-  info:             { label: "Info",             color: "bg-gray-700 text-gray-400 border-gray-600",           icon: "i" },
+const typeConfig: Record<
+  NotificationType,
+  { label: string; color: string; icon: string }
+> = {
+  buy_signal: {
+    label: "Kopsignal",
+    color: "bg-green-500/15 text-green-400 border-green-500/30",
+    icon: "↑",
+  },
+  sell_signal: {
+    label: "Saljsignal",
+    color: "bg-red-500/15 text-red-400 border-red-500/30",
+    icon: "↓",
+  },
+  report_warning: {
+    label: "Rapportvarning",
+    color: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    icon: "!",
+  },
+  morning_summary: {
+    label: "Morgonsummering",
+    color: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    icon: "☀",
+  },
+  evening_summary: {
+    label: "Kvallssummering",
+    color: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
+    icon: "☾",
+  },
+  scan_suggestion: {
+    label: "Watchlist-forslag",
+    color: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+    icon: "↕",
+  },
+  info: {
+    label: "Info",
+    color: "bg-gray-700 text-gray-400 border-gray-600",
+    icon: "i",
+  },
 };
 
 export default async function NotificationsPage() {
@@ -71,17 +102,22 @@ export default async function NotificationsPage() {
       {/* Log table */}
       {items.length === 0 ? (
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
-          Inga notiser loggade anu. De dyker upp har nar agenten skickar kop/salj-signaler,
-          summerings- eller rapportvarningar.
+          Inga notiser loggade anu. De dyker upp har nar agenten skickar
+          kop/salj-signaler, summerings- eller rapportvarningar.
         </div>
       ) : (
         <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
           {items.map((n) => {
             const cfg = typeConfig[n.type] ?? typeConfig.info;
             return (
-              <div key={n.id} className="p-4 flex gap-4 hover:bg-gray-800/30 transition">
+              <div
+                key={n.id}
+                className="p-4 flex gap-4 hover:bg-gray-800/30 transition"
+              >
                 {/* Icon */}
-                <div className={`mt-0.5 w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 ${cfg.color}`}>
+                <div
+                  className={`mt-0.5 w-7 h-7 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 ${cfg.color}`}
+                >
                   {cfg.icon}
                 </div>
 
@@ -94,7 +130,9 @@ export default async function NotificationsPage() {
                         {n.ticker}
                       </span>
                     )}
-                    <span className={`text-xs px-1.5 py-0.5 rounded border ${cfg.color}`}>
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded border ${cfg.color}`}
+                    >
                       {cfg.label}
                     </span>
                   </div>
@@ -105,8 +143,20 @@ export default async function NotificationsPage() {
 
                 {/* Timestamp */}
                 <div className="text-xs text-gray-600 shrink-0 text-right pt-0.5">
-                  <div>{new Date(n.created_at).toLocaleDateString("sv-SE", { day: "numeric", month: "short", timeZone: "Europe/Stockholm" })}</div>
-                  <div>{new Date(n.created_at).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Stockholm" })}</div>
+                  <div>
+                    {new Date(n.created_at).toLocaleDateString("sv-SE", {
+                      day: "numeric",
+                      month: "short",
+                      timeZone: "Europe/Stockholm",
+                    })}
+                  </div>
+                  <div>
+                    {new Date(n.created_at).toLocaleTimeString("sv-SE", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "Europe/Stockholm",
+                    })}
+                  </div>
                 </div>
               </div>
             );
