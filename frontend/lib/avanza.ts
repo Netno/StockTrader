@@ -52,7 +52,7 @@ export const AVANZA_URLS: Record<string, string> = {
   "SHB A": "https://www.avanza.se/aktier/om-aktien.html/5264/handelsbanken-a",
   "SINCH": "https://www.avanza.se/aktier/om-aktien.html/599956/sinch",
   "SKF B": "https://www.avanza.se/aktier/om-aktien.html/5259/skf-b",
-  "SOBI": "https://www.avanza.se/aktier/om-aktien.html/5576/swedish-orphan-biovitrum",
+  "SOBI": "https://www.avanza.se/aktier/om-aktien.html/51308/swedish-orphan-biovitrum",
   "SSAB A": "https://www.avanza.se/aktier/om-aktien.html/5261/ssab-a",
   "SSAB B": "https://www.avanza.se/aktier/om-aktien.html/495284/ssab-b",
   "STE R": "https://www.avanza.se/aktier/om-aktien.html/5256/stora-enso-r",

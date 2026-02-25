@@ -84,7 +84,7 @@ _STOCK_DATA: list[tuple[str, str, str, str]] = [
     ("SHB A", "Handelsbanken A", "https://www.avanza.se/aktier/om-aktien.html/5264/handelsbanken-a", "SHB-A.ST"),
     ("SINCH", "Sinch", "https://www.avanza.se/aktier/om-aktien.html/599956/sinch", "SINCH.ST"),
     ("SKF B", "SKF B", "https://www.avanza.se/aktier/om-aktien.html/5259/skf-b", "SKF-B.ST"),
-    ("SOBI", "Swedish Orphan Biovitrum", "https://www.avanza.se/aktier/om-aktien.html/5576/swedish-orphan-biovitrum", "SOBI.ST"),
+    ("SOBI", "Swedish Orphan Biovitrum", "https://www.avanza.se/aktier/om-aktien.html/51308/swedish-orphan-biovitrum", "SOBI.ST"),
     ("SSAB A", "SSAB A", "https://www.avanza.se/aktier/om-aktien.html/5261/ssab-a", "SSAB-A.ST"),
     ("SSAB B", "SSAB B", "https://www.avanza.se/aktier/om-aktien.html/495284/ssab-b", "SSAB-B.ST"),
     ("STE R", "Stora Enso R", "https://www.avanza.se/aktier/om-aktien.html/5256/stora-enso-r", "STE-R.ST"),
