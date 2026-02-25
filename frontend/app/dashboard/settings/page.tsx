@@ -319,7 +319,7 @@ export default function SettingsPage() {
                   <span className="bg-gray-800 rounded-lg px-3 py-1.5">
                     <span className="text-gray-500">Skannade: </span>
                     <span className="text-white font-semibold">
-                      {discoveryResult.scanned ?? discoveryResult.scanned_count}
+                      {discoveryResult.scanned}
                     </span>
                     {discoveryResult.total_universe && (
                       <span className="text-gray-600">/{discoveryResult.total_universe}</span>
@@ -359,14 +359,14 @@ export default function SettingsPage() {
                       <span className="text-gray-600 ml-1 text-xs">{showFiltered ? "▲" : "▼"}</span>
                     </span>
                   )}
-                  {((discoveryResult.errors ?? discoveryResult.error_count) ?? 0) > 0 && (
+                  {(discoveryResult.errors ?? 0) > 0 && (
                     <span
                       className="bg-gray-800 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-gray-700 transition"
                       onClick={() => setShowErrors(!showErrors)}
                     >
                       <span className="text-gray-500">Fel: </span>
                       <span className="text-red-400 font-semibold">
-                        {discoveryResult.errors ?? discoveryResult.error_count}
+                        {discoveryResult.errors}
                       </span>
                       <span className="text-gray-600 ml-1 text-xs">{showErrors ? "▲" : "▼"}</span>
                     </span>
