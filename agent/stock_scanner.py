@@ -417,6 +417,22 @@ async def discovery_scan():
     # Update watchlist in DB
     await bulk_update_watchlist(positioned_tickers, new_entries)
 
+    # Seed indicators + prices for all watchlist stocks so the frontend shows data immediately
+    # (otherwise stocks won't have data until next trading loop tick)
+    from db.supabase_client import save_indicators, save_price
+    seeded = 0
+    for r in final_selection:
+        try:
+            ind = r["indicators"].copy()
+            ind["buy_score"] = r["buy_pre_score"]
+            await save_indicators(r["ticker"], ind)
+            if ind.get("current_price"):
+                await save_price(r["ticker"], ind["current_price"], int(ind.get("volume_ratio", 0) * 1000000))
+            seeded += 1
+        except Exception as e:
+            logger.debug(f"Seed indicators {r['ticker']}: {e}")
+    logger.info(f"Seedade indikatorer för {seeded}/{len(final_selection)} watchlist-aktier")
+
     # Summary notification
     top5 = final_selection[:5]
     top5_lines = []
