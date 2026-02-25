@@ -180,6 +180,27 @@ def score_buy_signal(
             score += 10
             reasons.append(f"Bollinger: Touch undre band ({bb_lower:.2f}, bekräftat av RSI)")
 
+    # ── BULL-MARKET SIGNALS ────────────────────────────────────────────
+
+    # Pullback i upptrend: RSI 35–55, pris > MA50 > MA200 → +15p
+    # Fångar den vanligaste lönsamma swingtraden i BULL-marknad:
+    # moderat pullback i stark trend. Bandet 35–55 täcker:
+    #  - RSI 35–40: gränslandet mot översålt (gapet mot RSI<35-signalen)
+    #  - RSI 40–50: klassisk pullback
+    #  - RSI 50–55: mild konsolidering i stark trend
+    # Kräver att pris > MA50 > MA200 — bekräftar etablerad upptrend.
+    if (rsi is not None and 35 <= rsi <= 55
+            and current_price and ma50 and ma200
+            and current_price > ma50 and ma50 > ma200):
+        score += 15
+        reasons.append(f"Pullback i upptrend: RSI {rsi:.0f}, pris > MA50 > MA200")
+
+    # Trendstyrka: MA50 > MA200 (Golden Cross) → +10p
+    # Bekräftar att aktien är i en etablerad upptrend.
+    if ma50 and ma200 and ma50 > ma200:
+        score += 10
+        reasons.append("Trendstyrka: MA50 > MA200 (Golden Cross)")
+
     # Rapport within 48h → -25p hard penalty
     if has_open_report_soon:
         score -= 25
@@ -343,19 +364,20 @@ def get_effective_buy_threshold(
     elif market_regime == "NEUTRAL":
         threshold += 4
     elif market_regime == "BULL_EARLY":
-        threshold += 0
+        threshold -= 3
     elif market_regime == "BULL":
-        threshold -= 2
+        threshold -= 5
 
-    # Liquidity segment adjustment (SEK/day turnover)
+    # Liquidity segment adjustment — only penalize very illiquid stocks
+    # Large/mid cap stocks should NOT be penalized for high liquidity;
+    # that punishes exactly the stocks we want to buy.
     if avg_turnover is not None:
-        if avg_turnover >= 100_000_000:
-            threshold += 8
-        elif avg_turnover < 15_000_000:
+        if avg_turnover < 15_000_000:
             threshold += 3
 
-    # Safety clamps
-    return max(55, min(85, threshold))
+    # Safety clamps — allow lower threshold in strong bull markets
+    # (system has hard position limits + manual confirmation as safeguards)
+    return max(50, min(85, threshold))
 
 
 def get_effective_sell_threshold(base_threshold: int, market_regime: str = "NEUTRAL") -> int:
