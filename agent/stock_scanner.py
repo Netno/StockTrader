@@ -369,8 +369,8 @@ async def discovery_scan():
             errors += 1
             logger.warning(f"  {ticker}: fel — {e}")
 
-        # Throttle to avoid Yahoo rate-limiting (max ~5 req/s)
-        await asyncio.sleep(0.25)
+        # Throttle to avoid Yahoo rate-limiting
+        await asyncio.sleep(0.5)
 
     if not results:
         logger.warning("Discovery scan returnerade inga resultat.")
@@ -500,7 +500,7 @@ async def run_scan():
             logger.warning(f"  {ticker}: fel – {e}")
 
         # Throttle to avoid Yahoo rate-limiting
-        await asyncio.sleep(0.25)
+        await asyncio.sleep(0.5)
 
     if not results:
         logger.warning("Skanning returnerade inga resultat.")

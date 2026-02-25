@@ -1,8 +1,12 @@
+import asyncio
+import logging
 import os
 import time
 from typing import Optional
 import httpx
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # Vercel frontend acts as Yahoo Finance proxy (Railway IPs are blocked by Yahoo)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "").rstrip("/")
@@ -32,9 +36,23 @@ async def get_price_history(ticker: str, days: int = 220) -> pd.DataFrame:
         return cached
 
     url = f"{FRONTEND_URL}/api/market/{ticker}?type=history&days={days}"
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
+
+    # Retry with backoff for transient errors (rate-limit, timeout)
+    last_err = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+            break
+        except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError) as e:
+            last_err = e
+            if attempt < 2:
+                wait = (attempt + 1) * 2  # 2s, 4s
+                logger.debug(f"Yahoo retry {attempt+1}/2 for {ticker}: {e} — waiting {wait}s")
+                await asyncio.sleep(wait)
+    else:
+        raise last_err  # type: ignore[misc]
 
     data = resp.json()
     if "error" in data or "data" not in data:
@@ -90,9 +108,22 @@ async def get_current_price(ticker: str) -> dict:
         return cached
 
     url = f"{FRONTEND_URL}/api/market/{ticker}?type=price"
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
+
+    last_err = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+            break
+        except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError) as e:
+            last_err = e
+            if attempt < 2:
+                wait = (attempt + 1) * 2
+                logger.debug(f"Yahoo retry {attempt+1}/2 for {ticker} price: {e}")
+                await asyncio.sleep(wait)
+    else:
+        raise last_err  # type: ignore[misc]
 
     data = resp.json()
     raw_price = data.get("price")
