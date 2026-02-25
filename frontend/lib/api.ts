@@ -41,4 +41,5 @@ export const api = {
   reset:          () => post<any>("/api/reset"),
   getSettings:    () => get<any>("/api/settings"),
   saveSettings:   (body: Record<string, string>) => post<any>("/api/settings", body),
+  discoveryScan:  () => post<any>("/api/discovery-scan"),
 };

@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
     sched = setup_scheduler()
     sched.start()
     await load_open_positions()
-    logger.info("Scheduler igng.")
+    logger.info("Scheduler igång.")
     yield
     sched.shutdown()
     logger.info("Scheduler stoppad.")
@@ -684,6 +684,22 @@ async def insert_test_signal():
         "quantity": quantity,
         "message": "Testsignal skapad — ga till /api/signals eller frontenden for att bekrafta.",
     }
+
+
+@app.post("/api/discovery-scan")
+async def trigger_discovery_scan():
+    """Manually trigger a discovery scan of the full stock universe.
+    Runs synchronously and returns the result."""
+    from stock_scanner import discovery_scan
+    try:
+        result = await discovery_scan()
+        return {
+            "ok": True,
+            **(result or {}),
+        }
+    except Exception as e:
+        logger.error(f"Discovery scan misslyckades: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/api/test-ai-stats-write")

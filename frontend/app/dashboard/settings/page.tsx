@@ -5,6 +5,26 @@ import AiStatsChart from "@/components/dashboard/AiStatsChart";
 
 const API = process.env.NEXT_PUBLIC_AGENT_URL ?? "http://localhost:8000";
 
+interface DiscoveryCandidate {
+  ticker: string;
+  name: string;
+  combined_score: number;
+  candidate_score: number;
+  buy_pre_score: number;
+  reasons: string[];
+  is_positioned: boolean;
+}
+
+interface DiscoveryResult {
+  ok: boolean;
+  scanned?: number;
+  errors?: number;
+  market_regime?: string;
+  watchlist_size?: number;
+  candidates?: DiscoveryCandidate[];
+  error?: string;
+}
+
 interface AiStats {
   date: string;
   hour: number;
@@ -93,6 +113,8 @@ export default function SettingsPage() {
   const [pending, startTransition] = useTransition();
   const [aiStats, setAiStats] = useState<AiStats | null>(null);
   const [aiHistory, setAiHistory] = useState<AiStatsHistoryRow[]>([]);
+  const [discoveryRunning, setDiscoveryRunning] = useState(false);
+  const [discoveryResult, setDiscoveryResult] = useState<DiscoveryResult | null>(null);
 
   useEffect(() => {
     fetch(`${API}/api/settings`, { cache: "no-store" })
@@ -194,6 +216,161 @@ export default function SettingsPage() {
           Dessa inställningar ersätter de hårdkodade standardvärdena och kan
           ändras när som helst.
         </p>
+      </div>
+
+      {/* Discovery Scan */}
+      <h2 className="text-lg font-bold mt-8">Discovery Scan</h2>
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+        <p className="text-sm text-gray-400">
+          Skannar alla ~124 aktier på Nasdaq Stockholm (Large &amp; Mid Cap) och
+          väljer de bästa kandidaterna som watchlist. Tar ca 2–5 minuter.
+        </p>
+        <button
+          onClick={async () => {
+            setDiscoveryRunning(true);
+            setDiscoveryResult(null);
+            try {
+              const res = await fetch(`${API}/api/discovery-scan`, {
+                method: "POST",
+                cache: "no-store",
+              });
+              const data: DiscoveryResult = await res.json();
+              setDiscoveryResult(data);
+            } catch {
+              setDiscoveryResult({ ok: false, error: "Nätverksfel — kunde inte nå agenten." });
+            } finally {
+              setDiscoveryRunning(false);
+            }
+          }}
+          disabled={discoveryRunning}
+          className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-lg px-5 py-2 text-sm font-semibold transition"
+        >
+          {discoveryRunning ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Skannar aktier...
+            </span>
+          ) : (
+            "Kör Discovery Scan"
+          )}
+        </button>
+
+        {discoveryResult && (
+          <div className="space-y-3">
+            {discoveryResult.ok ? (
+              <>
+                <div className="flex flex-wrap gap-3 text-sm">
+                  <span className="bg-gray-800 rounded-lg px-3 py-1.5">
+                    <span className="text-gray-500">Skannade: </span>
+                    <span className="text-white font-semibold">{discoveryResult.scanned}</span>
+                  </span>
+                  <span className="bg-gray-800 rounded-lg px-3 py-1.5">
+                    <span className="text-gray-500">I watchlist: </span>
+                    <span className="text-white font-semibold">{discoveryResult.watchlist_size}</span>
+                  </span>
+                  <span className="bg-gray-800 rounded-lg px-3 py-1.5">
+                    <span className="text-gray-500">Marknad: </span>
+                    <span className={`font-semibold ${
+                      discoveryResult.market_regime === "BULLISH" ? "text-green-400" :
+                      discoveryResult.market_regime === "BEARISH" ? "text-red-400" : "text-yellow-400"
+                    }`}>{discoveryResult.market_regime}</span>
+                  </span>
+                  {(discoveryResult.errors ?? 0) > 0 && (
+                    <span className="bg-gray-800 rounded-lg px-3 py-1.5">
+                      <span className="text-gray-500">Fel: </span>
+                      <span className="text-red-400 font-semibold">{discoveryResult.errors}</span>
+                    </span>
+                  )}
+                </div>
+
+                {discoveryResult.candidates && discoveryResult.candidates.length > 0 && (
+                  <div className="bg-gray-800 rounded-lg overflow-hidden">
+                    <div className="px-4 py-2 border-b border-gray-700">
+                      <p className="text-xs font-semibold text-gray-400">Topp-kandidater i ny watchlist</p>
+                    </div>
+                    {/* Desktop table */}
+                    <div className="hidden sm:block">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-gray-500 border-b border-gray-700">
+                            <th className="px-4 py-2">#</th>
+                            <th className="px-4 py-2">Aktie</th>
+                            <th className="px-4 py-2 text-right">Kombi</th>
+                            <th className="px-4 py-2 text-right">Köp-pre</th>
+                            <th className="px-4 py-2 text-right">Kandidat</th>
+                            <th className="px-4 py-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-700">
+                          {discoveryResult.candidates.map((c, i) => (
+                            <tr key={c.ticker} className="text-gray-300">
+                              <td className="px-4 py-2 text-gray-500 text-xs">{i + 1}</td>
+                              <td className="px-4 py-2">
+                                <span className="text-white font-semibold">{c.ticker}</span>
+                                <span className="text-gray-500 ml-2 text-xs">{c.name}</span>
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono">
+                                <span className={c.combined_score >= 50 ? "text-green-400" : c.combined_score >= 30 ? "text-yellow-400" : "text-gray-400"}>
+                                  {c.combined_score.toFixed(0)}p
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono">
+                                <span className={c.buy_pre_score >= 40 ? "text-green-400" : "text-gray-400"}>
+                                  {c.buy_pre_score.toFixed(0)}p
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-right font-mono text-gray-400">
+                                {c.candidate_score.toFixed(0)}p
+                              </td>
+                              <td className="px-4 py-2">
+                                {c.is_positioned ? (
+                                  <span className="text-xs bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">Position</span>
+                                ) : (
+                                  <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">Ny</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* Mobile cards */}
+                    <div className="sm:hidden divide-y divide-gray-700">
+                      {discoveryResult.candidates.map((c, i) => (
+                        <div key={c.ticker} className="p-3 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-white font-semibold">{i + 1}. {c.ticker}</span>
+                              <span className="text-gray-500 ml-2 text-xs">{c.name}</span>
+                            </div>
+                            {c.is_positioned && (
+                              <span className="text-xs bg-blue-500/15 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">Position</span>
+                            )}
+                          </div>
+                          <div className="flex gap-3 text-xs">
+                            <span>
+                              <span className="text-gray-500">Kombi </span>
+                              <span className={c.combined_score >= 50 ? "text-green-400 font-semibold" : "text-gray-300"}>{c.combined_score.toFixed(0)}p</span>
+                            </span>
+                            <span>
+                              <span className="text-gray-500">Köp </span>
+                              <span className={c.buy_pre_score >= 40 ? "text-green-400 font-semibold" : "text-gray-300"}>{c.buy_pre_score.toFixed(0)}p</span>
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-red-400">{discoveryResult.error ?? "Okänt fel"}</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* AI Usage Stats */}

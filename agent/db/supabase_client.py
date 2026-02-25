@@ -221,6 +221,63 @@ async def get_watchlist() -> list:
     return result.data or []
 
 
+async def bulk_update_watchlist(keep_tickers: set[str], new_entries: list[dict]):
+    """
+    Replace watchlist: keep positioned stocks, deactivate others, add new candidates.
+
+    keep_tickers: tickers with open positions (never deactivated)
+    new_entries: list of dicts with keys: ticker, name, strategy, stop_loss_pct,
+                 take_profit_pct, atr_multiplier, avanza_url
+    """
+    client = get_client()
+    # Get current active watchlist
+    current = client.table("stock_watchlist").select("ticker").eq("active", True).execute()
+    current_tickers = {r["ticker"] for r in (current.data or [])}
+
+    new_tickers = {e["ticker"] for e in new_entries}
+
+    # Deactivate stocks that are NOT in keep_tickers AND NOT in new_entries
+    to_deactivate = current_tickers - keep_tickers - new_tickers
+    for ticker in to_deactivate:
+        client.table("stock_watchlist").update({
+            "active": False,
+        }).eq("ticker", ticker).execute()
+        logger.info(f"[Discovery] Avaktiverade {ticker} från watchlist")
+
+    # Add new entries (only those not already active)
+    for entry in new_entries:
+        if entry["ticker"] in current_tickers:
+            # Already active — keep it
+            continue
+        # Check if ticker exists but is inactive — reactivate
+        existing = client.table("stock_watchlist").select("id").eq("ticker", entry["ticker"]).limit(1).execute()
+        if existing.data:
+            client.table("stock_watchlist").update({
+                "active": True,
+                "strategy": entry.get("strategy", "trend_following"),
+                "stop_loss_pct": entry.get("stop_loss_pct", 0.05),
+                "take_profit_pct": entry.get("take_profit_pct", 0.10),
+                "atr_multiplier": entry.get("atr_multiplier", 1.3),
+            }).eq("ticker", entry["ticker"]).execute()
+            logger.info(f"[Discovery] Återaktiverade {entry['ticker']} i watchlist")
+        else:
+            client.table("stock_watchlist").insert({
+                "ticker": entry["ticker"],
+                "name": entry.get("name", entry["ticker"]),
+                "strategy": entry.get("strategy", "trend_following"),
+                "stop_loss_pct": entry.get("stop_loss_pct", 0.05),
+                "take_profit_pct": entry.get("take_profit_pct", 0.10),
+                "atr_multiplier": entry.get("atr_multiplier", 1.3),
+                "avanza_url": entry.get("avanza_url"),
+                "active": True,
+                "created_at": _now(),
+            }).execute()
+            logger.info(f"[Discovery] Lade till {entry['ticker']} i watchlist")
+
+    final = client.table("stock_watchlist").select("ticker").eq("active", True).execute()
+    logger.info(f"[Discovery] Watchlist nu: {len(final.data or [])} aktier aktiva")
+
+
 async def set_cooldown(ticker: str, until: datetime):
     get_client().table("stock_watchlist").update({
         "cooldown_until": until.isoformat(),

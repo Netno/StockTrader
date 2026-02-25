@@ -68,10 +68,27 @@ agent/
 
 - 08:30 — Morgonkontroll (återställ räknare)
 - 08:45 — Morgonsummering (push-notis)
+- 08:55 — **Discovery scan** (bred sökning, bara när positioner < MAX_POSITIONS)
 - 09:00–17:28 — Trading loop var 2:a minut (köp/säljsignaler)
 - 17:35 — Kvällssummering (push-notis)
 - 17:45 — Daglig skanning av hela universumet (portföljrotation)
 - Söndag 18:00 — Veckovis skanning
+
+### Discovery Mode vs Portfolio Mode
+
+Systemet har två faser:
+
+**Discovery Mode** (positioner < MAX_POSITIONS):
+- Varje morgon 08:55 skannas hela universumet (~75 aktier)
+- Top ~15 kandidater sätts som aktiv watchlist baserat på kombinerad poäng (40% kandidatkvalitet + 60% köp-pre-score)
+- Trading-loopen analyserar dessa bredare under dagen
+- Aktier med öppna positioner skyddas alltid
+- Manuell trigger: `POST /api/discovery-scan`
+
+**Portfolio Mode** (positioner = MAX_POSITIONS):
+- Discovery hoppas över — watchlist är smal (positionerade + reserv)
+- Trading-loopen fokuserar på stop-loss/take-profit för öppna positioner
+- Rotationslogik letar efter starkare kandidater vid kvällsskanning
 
 ### Signallogik
 

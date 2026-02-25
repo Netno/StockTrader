@@ -93,6 +93,26 @@ async def morning_summary():
     )
 
 
+async def morning_discovery():
+    """08:55 – When we have fewer than MAX_POSITIONS open, scan the full universe
+    and fill the watchlist with the best candidates.  This runs before the trading
+    loop starts at 09:00 so there is a broad pool of stocks to analyze."""
+    max_pos = _settings.get_int("max_positions")
+    if len(open_positions) >= max_pos:
+        logger.info(f"Discovery hoppad — redan {len(open_positions)}/{max_pos} positioner")
+        return
+
+    logger.info(
+        f"Discovery startar — {len(open_positions)}/{max_pos} positioner, "
+        f"söker bredare för att hitta köp­kandidater"
+    )
+    try:
+        from stock_scanner import discovery_scan
+        await discovery_scan()
+    except Exception as e:
+        logger.error(f"Discovery scan misslyckades: {e}", exc_info=True)
+
+
 async def trading_loop():
     """Every 2 minutes Mon–Fri 09:00–17:30 – main analysis loop."""
     now = datetime.now(timezone.utc)
@@ -478,6 +498,8 @@ def setup_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(morning_check, CronTrigger(day_of_week="mon-fri", hour=8, minute=30, timezone=tz))
     # 08:45 – Morgonsummering
     scheduler.add_job(morning_summary, CronTrigger(day_of_week="mon-fri", hour=8, minute=45, timezone=tz))
+    # 08:55 – Discovery scan (bred sökning när positioner < max)
+    scheduler.add_job(morning_discovery, CronTrigger(day_of_week="mon-fri", hour=8, minute=55, timezone=tz))
     # 09:00–16:58 – Handelsloop var 2:a minut
     scheduler.add_job(
         trading_loop,
