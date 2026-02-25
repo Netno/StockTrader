@@ -97,16 +97,11 @@ def score_buy_signal(
     macd_prev = indicators.get("macd_prev")
     macd_signal_prev = indicators.get("macd_signal_prev")
     macd_histogram = indicators.get("macd_histogram")
+    macd_histogram_prev = indicators.get("macd_histogram_prev")
 
-    # REGIMFILTER: penalisera köp i sidlesgående/fallande marknad
-    if market_regime == "BEAR":
-        score -= 30
-        reasons.append("⛔ Marknadsregim: BEAR (OMXS30 under MA200) -30p")
-    elif market_regime == "NEUTRAL":
-        score -= 10
-        reasons.append("Marknadsregim: NEUTRAL -10p")
-    elif market_regime in ("BULL", "BULL_EARLY"):
-        pass  # Ingen penalty i upptrend
+    # Regimhantering sker ENBART via get_effective_buy_threshold().
+    # Score representerar individuell aktiekvalitet — ren teknisk/fundamental
+    # signal utan marknadsbias, så att vi kan jämföra aktier rättvist.
 
     # RSI < 35 → +25p om pris över MA200 (upptrend), annars +10p
     if rsi is not None and rsi < 35:
@@ -127,6 +122,14 @@ def score_buy_signal(
             else:
                 score += 10
                 reasons.append("MACD crossover uppåt (histogram ej bekräftat)")
+
+    # MACD momentum: histogram positivt OCH stigande → +10p
+    # Fångar pågående bullish momentum EFTER crossover (varar 5–10 dagar),
+    # inte bara den enstaka crossover-dagen.
+    if (macd_histogram is not None and macd_histogram_prev is not None
+            and macd_histogram > 0 and macd_histogram > macd_histogram_prev):
+        score += 10
+        reasons.append(f"MACD momentum: histogram stigande ({macd_histogram:.4f})")
 
     # MA50-studs: pris precis OVANFÖR MA50 (0–2%) → +20p
     # Pris precis UNDER MA50 (-2%–0) → -10p (nedbrott, ej studs)
@@ -150,19 +153,22 @@ def score_buy_signal(
             score -= 15
             reasons.append(f"Pris precis under MA200 ({ma200:.2f}) — varning -15p")
 
-    # Volume > 150% of 20-day avg — direction-adjusted
-    # Hög volym på uppgångsdag = starkt bekräftelsesignal (+15p)
-    # Hög volym utan riktning = svagare (+8p)
-    # Hög volym på nedgångsdag = säljpress, ej köpsignal (0p)
-    if volume_ratio >= 1.5:
-        if daily_return is not None and daily_return > 0:
+    # Volymbekräftelse — direction-adjusted
+    # >150% på uppgångsdag: starkt bekräftelsesignal (+15p)
+    # >120% på uppgångsdag: normal institutionell köpaktivitet (+8p)
+    # Hög volym på nedgångsdag: säljpress, ingen köppoäng
+    if daily_return is not None and daily_return > 0:
+        if volume_ratio >= 1.5:
             score += 15
-            reasons.append(f"Volym: +{(volume_ratio - 1) * 100:.0f}% vs snitt (prisstigande dag)")
-        elif daily_return is not None and daily_return < 0:
-            pass  # Hög volym på nedgång — säljpress, ej köpsignal
-        else:
+            reasons.append(f"Volym: +{(volume_ratio - 1) * 100:.0f}% vs snitt (stark uppgång)")
+        elif volume_ratio >= 1.2:
             score += 8
-            reasons.append(f"Volym: +{(volume_ratio - 1) * 100:.0f}% vs snitt")
+            reasons.append(f"Volym: +{(volume_ratio - 1) * 100:.0f}% vs snitt (uppgång)")
+    elif daily_return is not None and daily_return < 0:
+        pass  # Hög volym på nedgång — säljpress, ej köpsignal
+    elif volume_ratio >= 1.5:
+        score += 5
+        reasons.append(f"Volym: +{(volume_ratio - 1) * 100:.0f}% vs snitt (riktning oklar)")
 
     # Gemini positive sentiment → +15p
     if news_sentiment and news_sentiment.get("sentiment") == "POSITIVE":
@@ -358,11 +364,13 @@ def get_effective_buy_threshold(
     """
     threshold = int(base_threshold)
 
-    # Regime adjustment
+    # Regime adjustment — enda stället regim påverkar köpbeslut.
+    # Score representerar aktiens individuella kvalitet (regim-agnostisk).
+    # Tröskeln styr hur bra setupen behöver vara givet marknadsklimatet.
     if market_regime == "BEAR":
-        threshold += 12
+        threshold += 10  # Var +12 — kräv stark setup men stäng inte av helt
     elif market_regime == "NEUTRAL":
-        threshold += 4
+        threshold += 2   # Var +4 — sidledes marknad, individuella aktier kan fortfarande ha bra setups
     elif market_regime == "BULL_EARLY":
         threshold -= 3
     elif market_regime == "BULL":

@@ -133,6 +133,7 @@ def calculate_indicators(df: pd.DataFrame) -> dict:
         "macd":             last(macd_df[macd_col]) if macd_col else None,
         "macd_signal":      last(macd_df[sig_col])  if sig_col  else None,
         "macd_histogram":   last(macd_df[hist_col]) if hist_col else None,
+        "macd_histogram_prev": prev(macd_df[hist_col]) if hist_col else None,
         "macd_prev":        prev(macd_df[macd_col]) if macd_col else None,
         "macd_signal_prev": prev(macd_df[sig_col])  if sig_col  else None,
         "ma20":             last(ma20_s),
