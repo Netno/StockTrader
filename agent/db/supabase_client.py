@@ -236,8 +236,27 @@ async def bulk_update_watchlist(keep_tickers: set[str], new_entries: list[dict])
 
     new_tickers = {e["ticker"] for e in new_entries}
 
+    # Protect stocks with high buy_score in DB — they're close to a buy signal
+    # and should not be removed just because the discovery scan ranked them lower
+    HIGH_SCORE_PROTECTION = 50  # protect stocks with buy_score >= 50
+    protected_by_score: set[str] = set()
+    for ticker in current_tickers - keep_tickers - new_tickers:
+        try:
+            latest = client.table("stock_indicators").select("buy_score") \
+                .eq("ticker", ticker) \
+                .order("timestamp", desc=True) \
+                .limit(1) \
+                .execute()
+            if latest.data and latest.data[0].get("buy_score") is not None:
+                if latest.data[0]["buy_score"] >= HIGH_SCORE_PROTECTION:
+                    protected_by_score.add(ticker)
+                    logger.info(f"[Discovery] Skyddar {ticker} — buy_score {latest.data[0]['buy_score']}p i DB")
+        except Exception as e:
+            logger.debug(f"Kunde inte kolla buy_score för {ticker}: {e}")
+
     # Deactivate stocks that are NOT in keep_tickers AND NOT in new_entries
-    to_deactivate = current_tickers - keep_tickers - new_tickers
+    # AND NOT protected by high buy_score
+    to_deactivate = current_tickers - keep_tickers - new_tickers - protected_by_score
     for ticker in to_deactivate:
         client.table("stock_watchlist").update({
             "active": False,

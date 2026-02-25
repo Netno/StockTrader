@@ -419,15 +419,22 @@ async def discovery_scan():
 
     # Seed indicators + prices for all watchlist stocks so the frontend shows data immediately
     # (otherwise stocks won't have data until next trading loop tick)
+    # NOTE: We intentionally do NOT seed buy_score here — the discovery scan only
+    # calculates a pre-score (technical only, no sentiment/insider/reports).
+    # The trading loop will fill in the real buy_score within minutes.
+    # Seeding a pre-score caused confusing score jumps (e.g. 70→55).
     from db.supabase_client import save_indicators, save_price
     seeded = 0
     for r in final_selection:
         try:
             ind = r["indicators"].copy()
-            ind["buy_score"] = r["buy_pre_score"]
+            # Don't seed buy_score — let trading loop calculate the real value
+            ind.pop("buy_score", None)
             await save_indicators(r["ticker"], ind)
-            if ind.get("current_price"):
-                await save_price(r["ticker"], ind["current_price"], int(ind.get("volume_ratio", 0) * 1000000))
+            # Use real volume from DataFrame (last day), not fake volume_ratio*1M
+            if ind.get("current_price") and r.get("df") is not None and not r["df"].empty:
+                real_volume = int(r["df"]["volume"].iloc[-1]) if "volume" in r["df"].columns else 0
+                await save_price(r["ticker"], ind["current_price"], real_volume)
             seeded += 1
         except Exception as e:
             logger.debug(f"Seed indicators {r['ticker']}: {e}")
@@ -517,6 +524,15 @@ async def run_scan():
 
     results = []
 
+    # Fetch OMXS30 for relative strength + market regime
+    try:
+        index_df = await get_index_history()
+    except Exception as e:
+        logger.warning(f"Kunde inte hämta OMXS30-data för run_scan: {e}")
+        index_df = None
+
+    market_regime = calculate_market_regime(index_df)
+
     for ticker, name in STOCK_UNIVERSE.items():
         yahoo_symbol = YAHOO_SYMBOLS.get(ticker)
         if not yahoo_symbol:
@@ -530,19 +546,33 @@ async def run_scan():
             if not indicators:
                 continue
             score, reasons = score_candidate(ticker, indicators, df)
+            if score == 0:
+                logger.debug(f"  {ticker}: filtrerad – {reasons[0] if reasons else '?'}")
+                continue
+
+            # Calculate buy pre-score for combined ranking (same as discovery_scan)
+            rs = calculate_relative_strength(df, index_df) if index_df is not None else None
+            buy_pre_score, _ = score_buy_signal(
+                ticker, indicators,
+                news_sentiment=None, insider_trades=None,
+                has_open_report_soon=False,
+                relative_strength=rs,
+                market_regime=market_regime,
+            )
+            combined_score = score * 0.4 + buy_pre_score * 0.6
+
             results.append({
                 "ticker": ticker,
                 "name": name,
                 "score": score,
+                "combined_score": combined_score,
+                "buy_pre_score": buy_pre_score,
                 "reasons": reasons,
                 "indicators": indicators,
                 "df": df,
                 "in_watchlist": ticker in current_tickers,
             })
-            if score > 0:
-                logger.info(f"  {ticker}: {score:.0f}p")
-            else:
-                logger.debug(f"  {ticker}: filtrerad – {reasons[0] if reasons else '?'}")
+            logger.info(f"  {ticker}: kandidat={score:.0f}p köp_pre={buy_pre_score:.0f}p kombi={combined_score:.0f}p")
         except Exception as e:
             logger.warning(f"  {ticker}: fel – {e}")
 
@@ -553,15 +583,15 @@ async def run_scan():
         logger.warning("Skanning returnerade inga resultat.")
         return
 
-    # Sort by score — disqualified stocks (score=0) hamnar sist
-    results.sort(key=lambda x: x["score"], reverse=True)
+    # Sort by combined score (same ranking as discovery_scan)
+    results.sort(key=lambda x: x["combined_score"], reverse=True)
 
     # Top candidates NOT in watchlist (only qualified, score > 0)
     top_new = [r for r in results if not r["in_watchlist"] and r["score"] > 0][:5]
 
     # Weakest in current watchlist (only those that qualified the liquidity filter)
     current_scored = [r for r in results if r["in_watchlist"] and r["score"] > 0]
-    current_scored.sort(key=lambda x: x["score"])
+    current_scored.sort(key=lambda x: x["combined_score"])
     weakest = current_scored[:2] if current_scored else []
 
     # Check which tickers have open positions (never rotate out of those)
@@ -578,31 +608,41 @@ async def run_scan():
             if weak["ticker"] in open_tickers:
                 logger.info(f"Hoppar over {weak['ticker']} — öppen position finns.")
                 continue
-            # Kräv att ny kandidat är minst ROTATION_MARGIN poäng bättre
-            if candidate["score"] > weak["score"] + ROTATION_MARGIN:
+            # Kräv att ny kandidat är minst ROTATION_MARGIN poäng bättre (combined_score)
+            if candidate["combined_score"] > weak["combined_score"] + ROTATION_MARGIN:
                 cfg = _derive_stock_config(candidate["indicators"], candidate["df"])
 
                 # Deactivate the weak stock
                 db.table("stock_watchlist").update({"active": False}).eq("ticker", weak["ticker"]).execute()
 
-                # Add the better stock with derived config
-                db.table("stock_watchlist").insert({
-                    "ticker":          candidate["ticker"],
-                    "name":            candidate["name"],
-                    "strategy":        cfg["strategy"],
-                    "stop_loss_pct":   cfg["stop_loss_pct"],
-                    "take_profit_pct": cfg["take_profit_pct"],
-                    "atr_multiplier":  cfg["atr_multiplier"],
-                    "avanza_url":      AVANZA_URLS.get(candidate["ticker"]),
-                    "active":          True,
-                    "created_at":      datetime.now(timezone.utc).isoformat(),
-                }).execute()
+                # Add the better stock with derived config (reactivate if exists, insert if new)
+                existing = db.table("stock_watchlist").select("id").eq("ticker", candidate["ticker"]).limit(1).execute()
+                if existing.data:
+                    db.table("stock_watchlist").update({
+                        "active": True,
+                        "strategy":        cfg["strategy"],
+                        "stop_loss_pct":   cfg["stop_loss_pct"],
+                        "take_profit_pct": cfg["take_profit_pct"],
+                        "atr_multiplier":  cfg["atr_multiplier"],
+                    }).eq("ticker", candidate["ticker"]).execute()
+                else:
+                    db.table("stock_watchlist").insert({
+                        "ticker":          candidate["ticker"],
+                        "name":            candidate["name"],
+                        "strategy":        cfg["strategy"],
+                        "stop_loss_pct":   cfg["stop_loss_pct"],
+                        "take_profit_pct": cfg["take_profit_pct"],
+                        "atr_multiplier":  cfg["atr_multiplier"],
+                        "avanza_url":      AVANZA_URLS.get(candidate["ticker"]),
+                        "active":          True,
+                        "created_at":      datetime.now(timezone.utc).isoformat(),
+                    }).execute()
 
                 replaced.append((weak, candidate))
                 replaced_tickers.add(weak["ticker"])
                 logger.info(
-                    f"Bytte {weak['ticker']} ({weak['score']:.0f}p) mot "
-                    f"{candidate['ticker']} ({candidate['score']:.0f}p) | "
+                    f"Bytte {weak['ticker']} (kombi={weak['combined_score']:.0f}p) mot "
+                    f"{candidate['ticker']} (kombi={candidate['combined_score']:.0f}p) | "
                     f"strategi={cfg['strategy']} SL={cfg['stop_loss_pct']} TP={cfg['take_profit_pct']}"
                 )
                 break
@@ -614,7 +654,7 @@ async def run_scan():
             top_reasons = c["reasons"][:3]
             reasons_str = "\n".join(f"    ✓ {r}" for r in top_reasons)
             sections.append(
-                f"  {w['ticker']} ({w['score']:.0f}p) → {c['ticker']} ({c['score']:.0f}p)\n{reasons_str}"
+                f"  {w['ticker']} ({w['combined_score']:.0f}p) → {c['ticker']} ({c['combined_score']:.0f}p)\n{reasons_str}"
             )
         lines = "\n".join(sections)
         await ntfy._send(
