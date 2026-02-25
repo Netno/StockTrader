@@ -21,7 +21,7 @@ export default function AnalyzeButton({ ticker }: { ticker: string }) {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.message ?? `HTTP ${res.status}`);
       setDone(true);
-      setTimeout(() => window.location.reload(), 8000);
+      setTimeout(() => window.location.reload(), 1500);
     } catch (e: any) {
       setError(e.message ?? "Nätverksfel");
     }

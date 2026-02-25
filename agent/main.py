@@ -626,15 +626,20 @@ async def trigger_trading_loop():
 
 
 @app.post("/api/run/{ticker}")
-async def trigger_single_ticker(ticker: str, background_tasks: BackgroundTasks):
-    """Manually run process_ticker for a single ticker (full DB writes + signal generation)."""
+async def trigger_single_ticker(ticker: str):
+    """Manually run process_ticker for a single ticker (full DB writes + signal generation).
+    Runs synchronously so the caller knows if it succeeded."""
     from scheduler import process_ticker
     from db.supabase_client import get_watchlist
     ticker = ticker.upper()
     watchlist = await get_watchlist()
     stock_config = next((s for s in watchlist if s["ticker"] == ticker), {})
-    background_tasks.add_task(process_ticker, ticker, stock_config, None, "NEUTRAL", None, True)
-    return {"ok": True, "message": f"Analys av {ticker} startad i bakgrunden (manuell, sentiment alltid på)."}
+    try:
+        await process_ticker(ticker, stock_config, None, "NEUTRAL", None, True)
+        return {"ok": True, "message": f"Analys av {ticker} klar — data sparat."}
+    except Exception as e:
+        logger.error(f"Analys av {ticker} misslyckades: {e}", exc_info=True)
+        return {"ok": False, "message": f"Analys av {ticker} misslyckades: {e}"}
 
 
 @app.post("/api/notify-test")
