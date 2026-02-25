@@ -454,7 +454,7 @@ async def discovery_scan():
     )
 
     # Return structured result for API consumers
-    return {
+    scan_result = {
         "scanned": scanned,
         "errors": errors,
         "filtered_count": len(filtered),
@@ -477,6 +477,17 @@ async def discovery_scan():
         "filtered": filtered,
         "error_tickers": error_tickers,
     }
+
+    # Persist to DB for reload-safe display + historical comparison
+    try:
+        from db.supabase_client import save_discovery_scan
+        scan_id = await save_discovery_scan(scan_result)
+        if scan_id:
+            scan_result["scan_id"] = scan_id
+    except Exception as e:
+        logger.warning(f"Kunde inte spara discovery scan till DB: {e}")
+
+    return scan_result
 
 
 async def run_scan():

@@ -389,3 +389,61 @@ def get_ai_stats_history(days: int = 30) -> list:
         .execute()
     )
     return result.data or []
+
+
+# ── Discovery Scan Persistence ──────────────────────────────────────────
+
+async def save_discovery_scan(scan_result: dict) -> str | None:
+    """Save a discovery scan result to DB. Returns the scan ID."""
+    try:
+        # Build candidate list without heavy data (df, full indicators)
+        candidates = scan_result.get("candidates", [])
+        # candidates are already clean dicts from stock_scanner
+
+        row = {
+            "market_regime": scan_result.get("market_regime", "UNKNOWN"),
+            "total_universe": scan_result.get("total_universe", 0),
+            "scanned_count": scan_result.get("scanned", 0),
+            "filtered_count": scan_result.get("filtered_count", 0),
+            "error_count": scan_result.get("errors", 0),
+            "watchlist_size": scan_result.get("watchlist_size", 0),
+            "candidates": candidates,
+            "filtered": scan_result.get("filtered", []),
+            "error_tickers": scan_result.get("error_tickers", []),
+            "scanned_at": _now(),
+        }
+        result = get_client().table("discovery_scans").insert(row).execute()
+        scan_id = result.data[0]["id"] if result.data else None
+        logger.info(f"[Discovery DB] Sparade scan {scan_id}: {len(candidates)} kandidater")
+        return scan_id
+    except Exception as e:
+        logger.error(f"[Discovery DB] Kunde inte spara scan: {e}")
+        return None
+
+
+async def get_latest_discovery_scan() -> dict | None:
+    """Get the most recent discovery scan result."""
+    result = (
+        get_client()
+        .table("discovery_scans")
+        .select("*")
+        .order("scanned_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def get_discovery_scan_history(days: int = 7) -> list:
+    """Get discovery scan history for the last N days."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    result = (
+        get_client()
+        .table("discovery_scans")
+        .select("id,scanned_at,market_regime,scanned_count,filtered_count,error_count,watchlist_size,candidates")
+        .gte("scanned_at", cutoff)
+        .order("scanned_at", desc=True)
+        .execute()
+    )
+    return result.data or []

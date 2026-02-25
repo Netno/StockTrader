@@ -702,6 +702,32 @@ async def trigger_discovery_scan():
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/api/discovery-scan/latest")
+async def get_latest_discovery():
+    """Get the most recent discovery scan result from DB."""
+    from db.supabase_client import get_latest_discovery_scan
+    try:
+        scan = await get_latest_discovery_scan()
+        if not scan:
+            return {"ok": False, "error": "Ingen discovery scan sparad ännu"}
+        return {"ok": True, **scan}
+    except Exception as e:
+        logger.error(f"Kunde inte hämta senaste discovery scan: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/discovery-scan/history")
+async def get_discovery_history(days: int = 7):
+    """Get discovery scan history for comparison over time."""
+    from db.supabase_client import get_discovery_scan_history
+    try:
+        scans = await get_discovery_scan_history(days=min(days, 30))
+        return {"ok": True, "scans": scans}
+    except Exception as e:
+        logger.error(f"Kunde inte hämta discovery-historik: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/test-ai-stats-write")
 async def test_ai_stats_write():
     """Test writing to stock_ai_stats table — returns success or exact error."""
